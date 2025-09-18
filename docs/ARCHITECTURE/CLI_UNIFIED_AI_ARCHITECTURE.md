@@ -1,7 +1,8 @@
-# Unified AI Integration Architecture
-**Version**: 2.0.0
+# CLI Unified AI Architecture
+**Version**: 2.1.0
 **Last Updated**: 2025-09-18
 **Author**: PayReady AI Team
+**Repository**: https://github.com/ai-cherry/payready-ai
 **Status**: Active
 
 ## Overview

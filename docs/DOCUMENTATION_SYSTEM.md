@@ -1,6 +1,7 @@
 # PayReady AI Documentation System
 **Last Updated**: September 18, 2025
-**Version**: 2.0.0
+**Version**: 2.1.0
+**Repository**: https://github.com/ai-cherry/payready-ai
 **Status**: Living Document
 
 ## Documentation Architecture

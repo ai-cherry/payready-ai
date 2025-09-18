@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Parse arguments
+if [[ $# -eq 0 ]]; then
+  echo "Usage: llmctl [route] [model] <prompt>"
+  echo "Routes: coding, codex, reasoning, fast, search, deep, stream"
+  exit 1
+fi
+
+if [[ $# -eq 1 ]]; then
+  route="coding"
+  model=""
+  prompt="$1"
+elif [[ $# -eq 2 ]]; then
+  route="$1"
+  model=""
+  prompt="$2"
+else
+  route="$1"
+  model="$2"
+  shift 2
+  prompt="$*"
+fi
+ROUTES_FILE="$(dirname "$0")/portkey.routes.json"
+cfg=$(cat "$ROUTES_FILE")
+resp=$(curl -s https://api.portkey.ai/v1/chat/completions \
+  -H "x-portkey-api-key: $PORTKEY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --argjson routes "$cfg" --arg r "$route" --arg p "$prompt" --arg m "$model" '{router:{task:$r,config:$routes}, model: ($m // null), messages:[{role:"user",content:$p}] }')" ) || true
+if [[ -z "$resp" || "$(echo "$resp" | jq -r '.choices[0].message.content // empty')" == "" ]]; then
+  m="${model:-gpt-5-mini}"
+  resp=$(curl -s https://api.openai.com/v1/chat/completions \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"model\":\"$m\",\"messages\":[{\"role\":\"user\",\"content\":\"$prompt\"}]}" )
+fi
+echo "$resp" | jq -r '.choices[0].message.content'

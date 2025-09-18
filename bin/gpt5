@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# GPT-5-mini CLI wrapper with proper parameters
+
+set -euo pipefail
+
+PROMPT="${*:-Write hello world in Python}"
+API_KEY="${OPENAI_API_KEY:-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}"
+
+# Make API call with correct parameters for gpt-5-mini
+curl -s -X POST https://api.openai.com/v1/chat/completions \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"model\": \"gpt-5-mini\",
+    \"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}],
+    \"temperature\": 1,
+    \"max_completion_tokens\": 1000
+  }" | jq -r '.choices[0].message.content // .error.message'

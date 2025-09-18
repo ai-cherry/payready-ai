@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Codex Web 2025 - ONLY current information
+# Enforces September 2025 context and filters out old data
+
+set -euo pipefail
+
+# Handle arguments
+QUERY="${1:?Usage: codex-web-2025 <query>}"
+API="${2:-auto}"  # auto, perplexity, brave, exa, all
+
+# Date context
+TODAY="September 18, 2025"
+CUTOFF="June 2025"
+
+echo "🌐 Searching 2025-only (since $CUTOFF)..." >&2
+
+# Function to validate 2025 content
+validate_2025() {
+    local content="$1"
+    if [[ "$content" == *"2024"* ]] || [[ "$content" == *"2023"* ]]; then
+        echo "⚠️ WARNING: Content contains pre-2025 data!" >&2
+        return 1
+    fi
+    return 0
+}
+
+# Function to search with Perplexity
+search_perplexity() {
+    if [[ -z "${PERPLEXITY_API_KEY:-}" ]]; then
+        return 1
+    fi
+
+    local response=$(curl -s -X POST https://api.perplexity.ai/chat/completions \
+        -H "Authorization: Bearer $PERPLEXITY_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"model\": \"sonar\",
+            \"messages\": [
+                {\"role\": \"system\", \"content\": \"Today is $TODAY. ONLY provide info from $CUTOFF onwards. Reject pre-2025 data.\"},
+                {\"role\": \"user\", \"content\": \"$QUERY (current as of $TODAY, exclude pre-2025)\"}
+            ]
+        }")
+
+    echo "$response" | jq -r '.choices[0].message.content // empty'
+}
+
+# Function to search with Brave
+search_brave() {
+    if [[ -z "${BRAVE_API_KEY:-}" ]]; then
+        return 1
+    fi
+
+    local encoded_query=$(echo "$QUERY 2025 -2024" | jq -sRr @uri)
+    local response=$(curl -s -X GET \
+        "https://api.search.brave.com/res/v1/web/search?q=$encoded_query&freshness=month&count=5" \
+        -H "X-Subscription-Token: $BRAVE_API_KEY")
+
+    echo "$response" | jq -r '.web.results[:3] | map(.title + " - " + .age + "\n" + .description) | join("\n\n")'
+}
+
+# Function to search with Exa
+search_exa() {
+    if [[ -z "${EXA_API_KEY:-}" ]]; then
+        return 1
+    fi
+
+    local response=$(curl -s -X POST https://api.exa.ai/search \
+        -H "x-api-key: $EXA_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"query\": \"$QUERY\",
+            \"num_results\": 5,
+            \"start_published_date\": \"2025-06-01\",
+            \"type\": \"neural\",
+            \"use_autoprompt\": true
+        }")
+
+    echo "$response" | jq -r '.results[:3] | map(.title + "\n" + .url) | join("\n\n")'
+}
+
+# Main search logic
+case "$API" in
+    perplexity)
+        result=$(search_perplexity)
+        ;;
+    brave)
+        result=$(search_brave)
+        ;;
+    exa)
+        result=$(search_exa)
+        ;;
+    all)
+        echo "=== PERPLEXITY ===" >&2
+        search_perplexity
+        echo -e "\n=== BRAVE ===" >&2
+        search_brave
+        echo -e "\n=== EXA ===" >&2
+        search_exa
+        exit 0
+        ;;
+    *)
+        # Auto-select best API
+        result=$(search_perplexity)
+        if [[ -z "$result" ]]; then
+            result=$(search_brave)
+        fi
+        if [[ -z "$result" ]]; then
+            result=$(search_exa)
+        fi
+        ;;
+esac
+
+# Validate and output
+if [[ -z "$result" ]]; then
+    echo "❌ No results found or all APIs failed" >&2
+    exit 1
+fi
+
+# Check for outdated content
+if ! validate_2025 "$result"; then
+    echo "⚠️ Results may contain outdated information. Filtering..." >&2
+    # Simple filter - remove lines with old years
+    result=$(echo "$result" | grep -v -E "202[0-4]|201[0-9]" || echo "$result")
+fi
+
+echo "$result"
+
+# Footer with date context
+echo -e "\n📅 Results from $CUTOFF to $TODAY only" >&2

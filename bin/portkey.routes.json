@@ -1,0 +1,12 @@
+{
+  "default": { "virtual_key": "${PORTKEY_VK_OPENROUTER}", "model": "anthropic/claude-3.7-sonnet" },
+  "routes": [
+    { "when": {"task": "coding"},      "use": { "virtual_key": "${PORTKEY_VK_OPENAI}",      "model": "gpt-5-mini" } },
+    { "when": {"task": "codex"},       "use": { "virtual_key": "${PORTKEY_VK_OPENAI}",      "model": "codex-mini-latest" } },
+    { "when": {"task": "reasoning"},   "use": { "virtual_key": "${PORTKEY_VK_ANTHROPIC}",  "model": "anthropic/claude-3.7-sonnet" } },
+    { "when": {"task": "fast"},        "use": { "virtual_key": "${PORTKEY_VK_XAI}",        "model": "grok-2" } },
+    { "when": {"task": "search"},      "use": { "virtual_key": "${PORTKEY_VK_PERPLEXITY}", "model": "llama-3.1-sonar-large" } },
+    { "when": {"task": "deep"},        "use": { "virtual_key": "${PORTKEY_VK_DEEPSEEK}",   "model": "deepseek-v3" } },
+    { "when": {"task": "stream"},      "use": { "virtual_key": "${PORTKEY_VK_GROQ}",       "model": "llama-3.2-11b-text-preview" } }
+  ]
+}

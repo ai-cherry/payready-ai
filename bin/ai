@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""
+Unified AI Interface - Natural language routing to appropriate AI tool
+Date: September 18, 2025
+"""
+
+import sys
+import os
+import subprocess
+import json
+from datetime import datetime, timedelta
+
+class AIRouter:
+    def __init__(self):
+        self.load_date_context()
+        self.capabilities = {
+            'claude': {
+                'triggers': ['refactor', 'analyze', 'review', 'understand', 'explain', 'debug', 'fix'],
+                'command': 'claude-code',
+                'strengths': 'deep codebase understanding, refactoring, analysis'
+            },
+            'codex': {
+                'triggers': ['write', 'create', 'generate', 'implement', 'code', 'build'],
+                'command': './bin/codex',
+                'strengths': 'code generation, implementation, syntax'
+            },
+            'web': {
+                'triggers': ['search', 'latest', 'current', 'find online', 'web', 'news'],
+                'command': './bin/codex-current',
+                'strengths': 'web search, current information (2025 only)'
+            },
+            'agno': {
+                'triggers': ['automate', 'orchestrate', 'deploy', 'pipeline', 'workflow', 'agent'],
+                'command': 'agno',
+                'strengths': 'automation, multi-step workflows, deployment'
+            }
+        }
+
+    def load_date_context(self):
+        """Load live date context."""
+        self.context = {
+            'date': datetime.now().strftime('%Y-%m-%d'),
+            'time': datetime.now().strftime('%H:%M:%S %Z'),
+            'timezone': 'UTC',
+            'cutoff_days': 100,
+            'cutoff_date': (datetime.now() - timedelta(days=100)).strftime('%Y-%m-%d'),
+            'timestamp': int(datetime.now().timestamp())
+        }
+
+    def route_request(self, query):
+        """Route query to appropriate AI based on content."""
+        query_lower = query.lower()
+
+        # Check for explicit tool request
+        if query_lower.startswith('claude:'):
+            return 'claude', query[7:].strip()
+        elif query_lower.startswith('codex:'):
+            return 'codex', query[6:].strip()
+        elif query_lower.startswith('web:'):
+            return 'web', query[4:].strip()
+        elif query_lower.startswith('agno:'):
+            return 'agno', query[5:].strip()
+
+        # Smart routing based on triggers
+        best_match = None
+        best_score = 0
+
+        for tool, config in self.capabilities.items():
+            score = sum(1 for trigger in config['triggers'] if trigger in query_lower)
+            if score > best_score:
+                best_score = score
+                best_match = tool
+
+        # Default to Codex for general queries
+        if best_match is None:
+            best_match = 'codex'
+
+        return best_match, query
+
+    def add_date_context(self, query, tool):
+        """Add appropriate date context based on tool."""
+        if tool == 'web':
+            # For web searches, emphasize current date
+            return f"{query} (current as of {self.context['date']}, only results from {self.context['cutoff_date']} onwards)"
+        else:
+            # For other tools, just add date reference
+            return f"{query} (context: today is {self.context['date']})"
+
+    def execute(self, tool, query):
+        """Execute the appropriate tool with context."""
+        # Add date context
+        contextualized_query = self.add_date_context(query, tool)
+
+        # Build command based on tool
+        if tool == 'claude':
+            # Check if claude-code is available
+            if subprocess.run(['which', 'claude-code'], capture_output=True).returncode == 0:
+                cmd = ['claude-code', 'chat', contextualized_query]
+            else:
+                print("⚠️ Claude CLI not found. Using Codex instead.", file=sys.stderr)
+                cmd = ['./bin/codex', 'gpt-5-mini', contextualized_query]
+
+        elif tool == 'codex':
+            codex_path = '/Users/lynnmusil/payready-ai/bin/codex'
+            cmd = [codex_path, 'gpt-5-mini', contextualized_query]
+
+        elif tool == 'web':
+            web_path = '/Users/lynnmusil/payready-ai/bin/codex-current'
+            cmd = [web_path, query]  # Already has date filtering
+
+        elif tool == 'agno':
+            # Check if agno is available
+            if subprocess.run(['which', 'agno'], capture_output=True).returncode == 0:
+                cmd = ['agno', 'execute', '--query', contextualized_query]
+            else:
+                print("⚠️ Agno not found. Using Codex instead.", file=sys.stderr)
+                cmd = ['./bin/codex', 'gpt-5-mini', contextualized_query]
+
+        else:
+            return f"Unknown tool: {tool}"
+
+        try:
+            # Set environment with date context
+            env = os.environ.copy()
+            env['DATE_CONTEXT'] = self.context['date']
+            env['TIME_CONTEXT'] = self.context['time']
+            env['CUTOFF_DATE'] = self.context['cutoff_date']
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd='/Users/lynnmusil/payready-ai'
+            )
+
+            if result.returncode != 0 and result.stderr:
+                return f"Error: {result.stderr}"
+
+            return result.stdout
+        except FileNotFoundError:
+            return f"Error: Command not found: {' '.join(cmd)}"
+        except Exception as e:
+            return f"Error executing {tool}: {e}"
+
+def main():
+    if len(sys.argv) < 2:
+        print("🤖 Unified AI Interface")
+        print("=" * 40)
+        print("\nUsage: ai <natural language query>")
+        print("       ai docs <command>")
+        print("\nCapabilities:")
+        print("  • Code generation (write, create, implement)")
+        print("  • Code analysis (refactor, review, debug)")
+        print("  • Web search (latest, current, search)")
+        print("  • Automation (orchestrate, deploy)")
+        print("  • Documentation (docs list, docs show, docs search)")
+        print("\nExamples:")
+        print('  ai "refactor the authentication module"')
+        print('  ai "write a FastAPI endpoint for user management"')
+        print('  ai "search for latest Python 3.13 features"')
+        print('  ai "claude: analyze the codebase architecture"')
+        print('  ai docs list')
+        print('  ai docs update')
+        print("\nDate Context:")
+        router = AIRouter()
+        print(f"  Today: {router.context['date']}")
+        print(f"  Cutoff: {router.context['cutoff_date']} (100 days ago)")
+        sys.exit(1)
+
+    # Check for docs command
+    if sys.argv[1] == 'docs':
+        docs_cmd = ['/Users/lynnmusil/payready-ai/bin/ai-docs'] + sys.argv[2:]
+        result = subprocess.run(docs_cmd, cwd='/Users/lynnmusil/payready-ai')
+        sys.exit(result.returncode)
+
+    query = ' '.join(sys.argv[1:])
+    router = AIRouter()
+    tool, processed_query = router.route_request(query)
+
+    print(f"🤖 Using {tool} ({router.capabilities[tool]['strengths']})...", file=sys.stderr)
+    print(f"📅 Date context: {router.context['date']}", file=sys.stderr)
+
+    result = router.execute(tool, processed_query)
+    print(result)
+
+if __name__ == "__main__":
+    main()

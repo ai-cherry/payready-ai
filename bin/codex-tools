@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""
+Codex with tool calling capability for web search.
+Uses OpenAI's function calling to search and fetch web content.
+"""
+
+import json
+import os
+import sys
+import requests
+from typing import Dict, Any
+
+def search_web(query: str) -> str:
+    """Search the web using available APIs."""
+    # Try Perplexity first
+    if perplexity_key := os.getenv("PERPLEXITY_API_KEY"):
+        response = requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={"Authorization": f"Bearer {perplexity_key}"},
+            json={
+                "model": "sonar",
+                "messages": [{"role": "user", "content": query}]
+            }
+        )
+        if response.ok:
+            return response.json()["choices"][0]["message"]["content"]
+
+    return f"Web search not available. Would search for: {query}"
+
+def fetch_url(url: str) -> str:
+    """Fetch content from a URL."""
+    try:
+        response = requests.get(url, timeout=5)
+        return response.text[:5000]  # Limit to 5000 chars
+    except:
+        return f"Could not fetch {url}"
+
+# Define tools for OpenAI
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search the web for current information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_url",
+            "description": "Fetch content from a specific URL",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
+    }
+]
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: codex-tools <prompt>")
+        sys.exit(1)
+
+    prompt = " ".join(sys.argv[1:])
+    api_key = os.getenv("OPENAI_API_KEY", "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")
+
+    # Initial request with tools
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={
+            "model": "gpt-5-mini",
+            "messages": [
+                {"role": "system", "content": "You have access to web search and URL fetching tools. Use them to answer with current information."},
+                {"role": "user", "content": prompt}
+            ],
+            "tools": tools,
+            "temperature": 1,
+            "max_completion_tokens": 2000
+        }
+    )
+
+    if not response.ok:
+        print(f"Error: {response.text}")
+        sys.exit(1)
+
+    result = response.json()
+    message = result["choices"][0]["message"]
+
+    # Check if model wants to use tools
+    if tool_calls := message.get("tool_calls"):
+        print("🔧 Using tools to gather information...", file=sys.stderr)
+
+        # Execute tool calls
+        tool_results = []
+        for tool_call in tool_calls:
+            function_name = tool_call["function"]["name"]
+            arguments = json.loads(tool_call["function"]["arguments"])
+
+            if function_name == "search_web":
+                result = search_web(arguments["query"])
+            elif function_name == "fetch_url":
+                result = fetch_url(arguments["url"])
+            else:
+                result = "Unknown function"
+
+            tool_results.append({
+                "tool_call_id": tool_call["id"],
+                "role": "tool",
+                "content": result
+            })
+
+        # Send results back to model
+        messages = [
+            {"role": "system", "content": "You have access to web search and URL fetching tools."},
+            {"role": "user", "content": prompt},
+            message,  # The message with tool calls
+            *tool_results  # Tool results
+        ]
+
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": "gpt-5-mini",
+                "messages": messages,
+                "temperature": 1,
+                "max_completion_tokens": 2000
+            }
+        )
+
+        result = response.json()
+
+    # Print final response
+    print(result["choices"][0]["message"]["content"])
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Advanced Codex CLI with multiple model support
+set -euo pipefail
+
+# Check if no arguments provided
+if [[ $# -eq 0 ]]; then
+  echo "Usage: codex [model] <prompt>"
+  echo "Try: codex 'Write a hello world function'"
+  echo "Or:  codex --models (to see available models)"
+  exit 1
+fi
+
+# Default model and temperature
+MODEL="${1:-gpt-5-mini}"
+TEMP="${2:-1}"
+PROMPT="${3:-${*:3}}"
+
+# Handle different arg formats
+if [[ $# -eq 1 ]]; then
+  MODEL="gpt-5-mini"
+  PROMPT="$1"
+elif [[ $# -eq 2 ]]; then
+  MODEL="$1"
+  PROMPT="$2"
+  TEMP=1
+fi
+
+API_KEY="${OPENAI_API_KEY:-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}"
+
+# Show available models if requested
+if [[ "${MODEL}" == "--models" || "${MODEL}" == "-m" || "${PROMPT}" == "--models" ]]; then
+  echo "Available Codex Models:"
+  echo "  gpt-5-mini        - Latest mini model (fastest)"
+  echo "  gpt-5             - Full GPT-5 model"
+  echo "  gpt-5-nano        - Smallest GPT-5 variant"
+  echo "  gpt-5-chat-latest - Chat-optimized GPT-5"
+  echo "  codex-mini-latest - Specialized code completion"
+  echo ""
+  echo "Usage: codex [model] [prompt]"
+  echo "Examples:"
+  echo "  codex 'Write a Python function to calculate Fibonacci'"
+  echo "  codex gpt-5 'Explain quantum computing'"
+  echo "  codex codex-mini-latest 'Complete: def merge_sort(arr):'"
+  exit 0
+fi
+
+echo "🤖 Querying $MODEL..." >&2
+
+# Debug mode
+DEBUG="${DEBUG:-false}"
+
+# Special handling for codex models vs chat models
+if [[ "$MODEL" == codex* ]]; then
+  # Use completions endpoint for Codex models
+  RESPONSE=$(curl -s -X POST https://api.openai.com/v1/completions \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"model\": \"$MODEL\",
+      \"prompt\": \"$PROMPT\",
+      \"temperature\": $TEMP,
+      \"max_tokens\": 2000
+    }")
+else
+  # Use chat completions for GPT-5 models
+  RESPONSE=$(curl -s -X POST https://api.openai.com/v1/chat/completions \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"model\": \"$MODEL\",
+      \"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}],
+      \"temperature\": $TEMP,
+      \"max_completion_tokens\": 4000
+    }")
+fi
+
+# Debug output
+if [[ "$DEBUG" == "true" ]]; then
+  echo "DEBUG: Full response:" >&2
+  echo "$RESPONSE" | jq . >&2
+fi
+
+# Check for errors
+if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+  ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error.message // .error')
+  ERROR_TYPE=$(echo "$RESPONSE" | jq -r '.error.type // "unknown"')
+  echo "❌ Error: $ERROR_MSG" >&2
+
+  # Provide helpful suggestions
+  if [[ "$ERROR_TYPE" == "invalid_request_error" ]]; then
+    echo "💡 The model '$MODEL' may not exist. Try: codex --models" >&2
+  elif [[ "$ERROR_MSG" == *"API key"* ]] || [[ "$ERROR_MSG" == *"Incorrect"* ]]; then
+    echo "💡 Check your API key in ~/.config/payready/env.llm" >&2
+  fi
+  exit 1
+fi
+
+# Extract and display result
+if [[ "$MODEL" == codex* ]]; then
+  RESULT=$(echo "$RESPONSE" | jq -r '.choices[0].text // empty')
+else
+  RESULT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+fi
+
+if [[ -z "$RESULT" ]]; then
+  echo "⚠️ Empty response from $MODEL" >&2
+  echo "💡 Try running with DEBUG=true for more details" >&2
+  exit 1
+fi
+
+echo "$RESULT"

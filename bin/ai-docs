@@ -1,0 +1,538 @@
+#!/usr/bin/env python3
+"""
+Unified Documentation CLI - Living documentation system for PayReady AI
+Date: September 18, 2025
+"""
+
+import sys
+import os
+import json
+import subprocess
+import re
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Optional
+
+class DocumentationCLI:
+    def __init__(self):
+        self.project_root = Path('/Users/lynnmusil/payready-ai')
+        self.docs_path = self.project_root / 'docs'
+
+        # Ensure docs directory exists
+        self.docs_path.mkdir(exist_ok=True)
+
+        # Document categories
+        self.categories = {
+            'ARCHITECTURE': 'System design & technical architecture',
+            'GUIDES': 'How-to guides & tutorials',
+            'REFERENCES': 'API docs, configuration references',
+            'OPERATIONS': 'Live operational docs',
+            'DECISIONS': 'Architecture Decision Records (ADRs)'
+        }
+
+        # Initialize category directories
+        for category in self.categories:
+            (self.docs_path / category).mkdir(exist_ok=True)
+
+    def list_docs(self, category: Optional[str] = None) -> None:
+        """List all documentation files."""
+        print("📚 PayReady AI Documentation")
+        print("=" * 60)
+
+        if category:
+            categories = [category.upper()] if category.upper() in self.categories else []
+        else:
+            categories = self.categories.keys()
+
+        total_files = 0
+        for cat in categories:
+            cat_path = self.docs_path / cat
+            if cat_path.exists():
+                files = list(cat_path.glob('*.md'))
+                if files:
+                    print(f"\n📁 {cat} - {self.categories.get(cat, '')}")
+                    print("-" * 40)
+                    for file in sorted(files):
+                        # Get file info
+                        stat = file.stat()
+                        size = self._format_size(stat.st_size)
+                        modified = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M')
+
+                        # Extract status from file
+                        status = self._get_doc_status(file)
+                        status_emoji = self._get_status_emoji(status)
+
+                        print(f"  {status_emoji} {file.stem:30} {size:>10} {modified}")
+                        total_files += 1
+
+        print(f"\n📊 Total: {total_files} documents")
+        print(f"📅 Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+    def show_doc(self, doc_name: str) -> None:
+        """Display a specific document."""
+        # Search for the document
+        doc_file = self._find_doc(doc_name)
+
+        if not doc_file:
+            print(f"❌ Document '{doc_name}' not found")
+            self._suggest_similar(doc_name)
+            return
+
+        # Display the document
+        print(f"📄 {doc_file.stem}")
+        print("=" * 60)
+
+        content = doc_file.read_text()
+
+        # Syntax highlight if possible
+        try:
+            from pygments import highlight
+            from pygments.lexers import MarkdownLexer
+            from pygments.formatters import TerminalFormatter
+            print(highlight(content, MarkdownLexer(), TerminalFormatter()))
+        except ImportError:
+            print(content)
+
+    def search_docs(self, query: str) -> None:
+        """Search documentation for a query."""
+        print(f"🔍 Searching for: '{query}'")
+        print("=" * 60)
+
+        results = []
+        pattern = re.compile(query, re.IGNORECASE)
+
+        for md_file in self.docs_path.rglob('*.md'):
+            content = md_file.read_text()
+            lines = content.split('\n')
+
+            matches = []
+            for i, line in enumerate(lines):
+                if pattern.search(line):
+                    matches.append((i + 1, line.strip()))
+
+            if matches:
+                results.append({
+                    'file': md_file,
+                    'matches': matches[:3]  # Limit to 3 matches per file
+                })
+
+        if results:
+            for result in results:
+                rel_path = result['file'].relative_to(self.docs_path)
+                print(f"\n📄 {rel_path}")
+                for line_num, line_text in result['matches']:
+                    # Highlight the match
+                    highlighted = pattern.sub(lambda m: f"\033[1;33m{m.group()}\033[0m", line_text)
+                    print(f"  L{line_num:4}: {highlighted[:80]}...")
+
+            print(f"\n✅ Found {sum(len(r['matches']) for r in results)} matches in {len(results)} files")
+        else:
+            print("❌ No matches found")
+
+    def update_docs(self) -> None:
+        """Trigger documentation auto-update."""
+        print("🔄 Updating documentation...")
+
+        # Update current state
+        self._update_current_state()
+
+        # Update changelog
+        self._update_changelog()
+
+        # Update CLI reference
+        self._update_cli_reference()
+
+        print("✅ Documentation updated successfully")
+
+    def validate_docs(self) -> None:
+        """Validate documentation consistency."""
+        print("🔍 Validating documentation...")
+        issues = []
+
+        for md_file in self.docs_path.rglob('*.md'):
+            content = md_file.read_text()
+            rel_path = md_file.relative_to(self.docs_path)
+
+            # Check required headers
+            if '# ' not in content:
+                issues.append(f"{rel_path}: Missing main header")
+
+            if 'Last Updated' not in content and 'last updated' not in content.lower():
+                issues.append(f"{rel_path}: Missing 'Last Updated' field")
+
+            # Check for broken internal links
+            internal_links = re.findall(r'\[([^\]]+)\]\(([^)]+)\)', content)
+            for link_text, link_path in internal_links:
+                if link_path.startswith('/') or link_path.startswith('./'):
+                    full_path = self.docs_path / link_path.lstrip('./')
+                    if not full_path.exists() and not link_path.startswith('http'):
+                        issues.append(f"{rel_path}: Broken link to '{link_path}'")
+
+        if issues:
+            print("❌ Validation issues found:")
+            for issue in issues:
+                print(f"  • {issue}")
+        else:
+            print("✅ All documentation valid")
+
+    def generate_changelog(self) -> None:
+        """Generate changelog from git commits."""
+        print("📝 Generating CHANGELOG...")
+
+        try:
+            # Get git log
+            result = subprocess.run(
+                ['git', 'log', '--oneline', '--format=%H|%s|%an|%ad', '--date=short', '-50'],
+                cwd=self.project_root,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                changelog = self._format_changelog(result.stdout)
+                changelog_file = self.docs_path / 'OPERATIONS' / 'CHANGELOG.md'
+                changelog_file.write_text(changelog)
+                print(f"✅ Changelog generated: {changelog_file}")
+            else:
+                print("❌ Failed to generate changelog from git")
+
+        except Exception as e:
+            print(f"❌ Error generating changelog: {e}")
+
+    def create_doc(self, category: str, name: str, template: str = 'default') -> None:
+        """Create a new document from template."""
+        category = category.upper()
+        if category not in self.categories:
+            print(f"❌ Invalid category. Choose from: {', '.join(self.categories.keys())}")
+            return
+
+        doc_path = self.docs_path / category / f"{name}.md"
+        if doc_path.exists():
+            print(f"❌ Document already exists: {doc_path}")
+            return
+
+        # Get template content
+        template_content = self._get_template(template, name)
+
+        # Create document
+        doc_path.write_text(template_content)
+        print(f"✅ Created: {doc_path}")
+
+        # Open in editor if available
+        editor = os.environ.get('EDITOR', 'vi')
+        subprocess.run([editor, str(doc_path)])
+
+    # Helper methods
+
+    def _find_doc(self, name: str) -> Optional[Path]:
+        """Find a document by name."""
+        # Try exact match first
+        for md_file in self.docs_path.rglob('*.md'):
+            if md_file.stem.lower() == name.lower():
+                return md_file
+
+        # Try partial match
+        for md_file in self.docs_path.rglob('*.md'):
+            if name.lower() in md_file.stem.lower():
+                return md_file
+
+        return None
+
+    def _suggest_similar(self, name: str) -> None:
+        """Suggest similar document names."""
+        suggestions = []
+        for md_file in self.docs_path.rglob('*.md'):
+            if any(part in md_file.stem.lower() for part in name.lower().split('_')):
+                suggestions.append(md_file.stem)
+
+        if suggestions:
+            print(f"💡 Did you mean: {', '.join(suggestions[:3])}")
+
+    def _get_doc_status(self, file: Path) -> str:
+        """Extract status from document."""
+        try:
+            content = file.read_text()
+            if match := re.search(r'\*\*Status\*\*:\s*(\w+)', content):
+                return match.group(1)
+        except:
+            pass
+        return 'Unknown'
+
+    def _get_status_emoji(self, status: str) -> str:
+        """Get emoji for document status."""
+        emojis = {
+            'Active': '✅',
+            'Draft': '📝',
+            'Review': '👀',
+            'Deprecated': '⚠️',
+            'Living': '🔄',
+            'Unknown': '❓'
+        }
+        return emojis.get(status, '📄')
+
+    def _format_size(self, size: int) -> str:
+        """Format file size."""
+        for unit in ['B', 'KB', 'MB']:
+            if size < 1024:
+                return f"{size:.1f}{unit}"
+            size /= 1024
+        return f"{size:.1f}GB"
+
+    def _update_current_state(self) -> None:
+        """Update CURRENT_STATE.md."""
+        # Import context manager
+        sys.path.append(str(self.project_root))
+        from services.context_manager import get_context_manager
+
+        cm = get_context_manager()
+        context = cm.get_current_context()
+
+        content = f"""# Current System State
+**Last Updated**: {context['timestamp']}
+**Auto-Generated**: Do not edit manually
+**Status**: Living
+
+## System Overview
+- **Date**: {context['date']} {context['time']}
+- **Cutoff Date**: {context['cutoff_date']} (100 days ago)
+- **Project Root**: {context['project_root']}
+
+## Git Status
+- **Branch**: {context['git_status']['branch']}
+- **Status**: {'Clean' if context['git_status']['clean'] else 'Modified'}
+- **Modified Files**: {context['git_status']['modified']}
+- **Untracked Files**: {context['git_status']['untracked']}
+- **Staged Files**: {context['git_status']['staged']}
+
+## Active Files (Last 24 Hours)
+{self._format_active_files(context['active_files'])}
+
+## Recent Changes
+{self._format_recent_changes(context['recent_changes'])}
+
+## Environment
+- **Platform**: {context['environment']['platform']}
+- **Python**: {context['environment']['python_version']}
+- **User**: {context['environment']['user']}
+- **Shell**: {context['environment']['shell']}
+- **Virtual Env**: {'Active' if context['environment']['venv'] else 'None'}
+- **Storage**: {context['environment']['storage_type']}
+
+---
+*This document is automatically updated. Do not edit manually.*
+"""
+
+        state_file = self.docs_path / 'OPERATIONS' / 'CURRENT_STATE.md'
+        state_file.write_text(content)
+
+    def _format_active_files(self, files: List[Dict]) -> str:
+        """Format active files list."""
+        if not files:
+            return "*No recently modified files*"
+
+        lines = []
+        for file in files[:10]:
+            lines.append(f"- `{file['path']}` - {file['modified']}")
+        return '\n'.join(lines)
+
+    def _format_recent_changes(self, changes: List[Dict]) -> str:
+        """Format recent changes."""
+        if not changes:
+            return "*No recent commits*"
+
+        lines = []
+        for change in changes[:10]:
+            lines.append(f"- `{change['commit']}` - {change['message']} ({change['author']}, {change['time']})")
+        return '\n'.join(lines)
+
+    def _update_changelog(self) -> None:
+        """Update CHANGELOG.md from git commits."""
+        self.generate_changelog()
+
+    def _update_cli_reference(self) -> None:
+        """Update CLI_REFERENCE.md with command help."""
+        content = """# CLI Reference
+**Last Updated**: """ + datetime.now().strftime('%Y-%m-%d') + """
+**Status**: Active
+
+## Unified AI Interface
+
+### Main Commands
+
+#### `ai <query>`
+Natural language interface to all AI tools.
+
+**Examples:**
+```bash
+ai "write a Python function"
+ai "search latest AI news"
+ai "refactor auth module"
+```
+
+#### `ai-router <query> [--debug]`
+Enhanced router with confidence scoring.
+
+**Options:**
+- `--debug`: Show routing decision details
+
+#### `ai-docs <command>`
+Documentation management system.
+
+**Commands:**
+- `list [category]`: List documentation
+- `show <doc_name>`: Display document
+- `search <query>`: Search documentation
+- `update`: Update live docs
+- `validate`: Check consistency
+- `changelog`: Generate changelog
+
+### Specialized Tools
+
+#### `codex [model] <prompt>`
+Direct access to GPT-5 models.
+
+**Models:**
+- `gpt-5-mini`: Fast, optimized for code
+- `gpt-5`: Full capability
+- `gpt-5-nano`: Lightweight
+
+#### `codex-current <query>`
+Web search with 2025-only filtering.
+
+#### `codex-web-2025 <query> [api]`
+Multi-API web search.
+
+**APIs:**
+- `perplexity`: Real-time search
+- `brave`: Privacy-focused
+- `exa`: Semantic search
+
+---
+*This reference is automatically generated from CLI help text.*
+"""
+
+        ref_file = self.docs_path / 'REFERENCES' / 'CLI_REFERENCE.md'
+        ref_file.write_text(content)
+
+    def _format_changelog(self, git_log: str) -> str:
+        """Format git log into changelog."""
+        lines = git_log.strip().split('\n')
+
+        changelog = f"""# Changelog
+**Last Updated**: {datetime.now().strftime('%Y-%m-%d')}
+**Status**: Active
+
+## Recent Changes
+
+"""
+        current_date = ""
+        for line in lines:
+            if '|' in line:
+                parts = line.split('|')
+                if len(parts) >= 4:
+                    commit, message, author, date = parts[:4]
+
+                    if date != current_date:
+                        changelog += f"\n### {date}\n\n"
+                        current_date = date
+
+                    changelog += f"- `{commit[:8]}` - {message} (@{author})\n"
+
+        changelog += """
+
+---
+*This changelog is automatically generated from git commits.*
+"""
+        return changelog
+
+    def _get_template(self, template_type: str, name: str) -> str:
+        """Get document template."""
+        now = datetime.now().strftime('%Y-%m-%d')
+
+        if template_type == 'adr':
+            return f"""# ADR-XXX: {name}
+**Date**: {now}
+**Status**: Proposed
+**Deciders**: [Names]
+
+## Context
+What prompted this decision?
+
+## Decision
+What we decided.
+
+## Consequences
+What happens as a result?
+
+## Alternatives Considered
+Other options evaluated.
+"""
+        else:
+            return f"""# {name}
+**Version**: 1.0.0
+**Last Updated**: {now}
+**Author**: [Name]
+**Status**: Draft
+
+## Overview
+Brief description.
+
+## Details
+Main content here.
+
+## References
+Related documents.
+"""
+
+def main():
+    cli = DocumentationCLI()
+
+    if len(sys.argv) < 2:
+        print("📚 PayReady AI Documentation CLI")
+        print("=" * 60)
+        print("\nUsage: ai-docs <command> [options]")
+        print("\nCommands:")
+        print("  list [category]    List documentation")
+        print("  show <doc>         Display a document")
+        print("  search <query>     Search documentation")
+        print("  update             Update live documents")
+        print("  validate           Validate consistency")
+        print("  changelog          Generate changelog")
+        print("  create <cat> <name> Create new document")
+        print("\nCategories:")
+        for cat, desc in cli.categories.items():
+            print(f"  {cat:12} - {desc}")
+        sys.exit(1)
+
+    command = sys.argv[1]
+
+    if command == 'list':
+        category = sys.argv[2] if len(sys.argv) > 2 else None
+        cli.list_docs(category)
+    elif command == 'show':
+        if len(sys.argv) < 3:
+            print("❌ Usage: ai-docs show <document_name>")
+        else:
+            cli.show_doc(sys.argv[2])
+    elif command == 'search':
+        if len(sys.argv) < 3:
+            print("❌ Usage: ai-docs search <query>")
+        else:
+            query = ' '.join(sys.argv[2:])
+            cli.search_docs(query)
+    elif command == 'update':
+        cli.update_docs()
+    elif command == 'validate':
+        cli.validate_docs()
+    elif command == 'changelog':
+        cli.generate_changelog()
+    elif command == 'create':
+        if len(sys.argv) < 4:
+            print("❌ Usage: ai-docs create <category> <name>")
+        else:
+            cli.create_doc(sys.argv[2], sys.argv[3])
+    else:
+        print(f"❌ Unknown command: {command}")
+
+if __name__ == "__main__":
+    main()

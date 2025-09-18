@@ -1,0 +1,59 @@
+roles:
+  CEO:
+    grants:
+      - "*:*"
+    clearance: finance
+    flags:
+      - all
+      - ai_factory
+      - dashboards
+      - admin
+
+  Leadership:
+    grants:
+      - "domains:*:read"
+      - "connectors:apollo:*"
+      - "connectors:hubspot:*"
+      - "connectors:salesforce:read"
+      - "orchestrator:sophia:*"
+    clearance: internal
+    flags:
+      - ai_factory
+      - dashboards
+
+  Sales:
+    grants:
+      - "domains:client-health:read"
+      - "connectors:apollo:read"
+      - "connectors:hubspot:read"
+      - "connectors:salesforce:*"
+    clearance: sales
+    flags:
+      - dashboards
+
+  Engineering:
+    grants:
+      - "domains:technical:*"
+      - "connectors:linear:*"
+      - "connectors:github:*"
+      - "orchestrator:sophia:read"
+    clearance: technical
+    flags:
+      - ai_factory
+      - dashboards
+
+  Finance:
+    grants:
+      - "domains:financial:*"
+      - "connectors:netsuite:*"
+      - "connectors:looker:read"
+    clearance: finance
+    flags:
+      - dashboards
+
+  Default:
+    grants:
+      - "orchestrator:sophia:read"
+    clearance: public
+    flags:
+      - basic

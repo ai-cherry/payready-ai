@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Codex with REAL web search using multiple methods
+set -euo pipefail
+
+PROMPT="${1:?Usage: codex-real-web <prompt>}"
+
+# Method 1: Try Perplexity if available
+if [[ -n "${PERPLEXITY_API_KEY:-}" ]]; then
+  echo "🔍 Using Perplexity for real web search..." >&2
+
+  RESPONSE=$(curl -s -X POST https://api.perplexity.ai/chat/completions \
+    -H "Authorization: Bearer $PERPLEXITY_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"model\": \"sonar\",
+      \"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}]
+    }")
+
+  echo "$RESPONSE" | jq -r '.choices[0].message.content // .error.message'
+  exit 0
+fi
+
+# Method 2: Use Brave Search API if available
+if [[ -n "${BRAVE_API_KEY:-}" ]]; then
+  echo "🦁 Using Brave Search..." >&2
+
+  # Search with Brave
+  QUERY=$(echo "$PROMPT" | jq -sRr @uri)
+  SEARCH_RESULTS=$(curl -s -X GET \
+    "https://api.search.brave.com/res/v1/web/search?q=$QUERY" \
+    -H "X-Subscription-Token: $BRAVE_API_KEY")
+
+  # Extract top 3 results
+  CONTEXT=$(echo "$SEARCH_RESULTS" | jq -r '
+    .web.results[:3] |
+    map("Title: " + .title + "\nURL: " + .url + "\nSnippet: " + .description) |
+    join("\n\n")
+  ')
+
+  # Pass to GPT-5 with context
+  echo "🤖 Analyzing search results with GPT-5..." >&2
+
+  curl -s -X POST https://api.openai.com/v1/chat/completions \
+    -H "Authorization: Bearer ${OPENAI_API_KEY:-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}" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"model\": \"gpt-5-mini\",
+      \"messages\": [
+        {\"role\": \"system\", \"content\": \"Based on these search results, answer the user's question.\"},
+        {\"role\": \"user\", \"content\": \"Search results:\\n$CONTEXT\\n\\nQuestion: $PROMPT\"}
+      ],
+      \"temperature\": 1,
+      \"max_completion_tokens\": 2000
+    }" | jq -r '.choices[0].message.content'
+
+  exit 0
+fi
+
+# Method 3: Use SerpAPI if available
+if [[ -n "${SERPAPI_KEY:-}" ]]; then
+  echo "🐍 Using SerpAPI..." >&2
+
+  QUERY=$(echo "$PROMPT" | jq -sRr @uri)
+  SEARCH_RESULTS=$(curl -s "https://serpapi.com/search.json?q=$QUERY&api_key=$SERPAPI_KEY")
+
+  # Extract and process results
+  CONTEXT=$(echo "$SEARCH_RESULTS" | jq -r '.organic_results[:3] | map(.snippet) | join("\n")')
+
+  # Pass to GPT-5
+  curl -s -X POST https://api.openai.com/v1/chat/completions \
+    -H "Authorization: Bearer ${OPENAI_API_KEY:-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}" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"model\": \"gpt-5-mini\",
+      \"messages\": [
+        {\"role\": \"user\", \"content\": \"Based on: $CONTEXT\\n\\nAnswer: $PROMPT\"}
+      ],
+      \"temperature\": 1,
+      \"max_completion_tokens\": 2000
+    }" | jq -r '.choices[0].message.content'
+
+  exit 0
+fi
+
+echo "❌ No web search API configured!" >&2
+echo "" >&2
+echo "To enable real web search, add one of these to ~/.config/payready/env.llm:" >&2
+echo "  PERPLEXITY_API_KEY=pplx-xxx  # Get from perplexity.ai/settings/api" >&2
+echo "  BRAVE_API_KEY=BSA-xxx        # Get from brave.com/search/api" >&2
+echo "  SERPAPI_KEY=xxx              # Get from serpapi.com" >&2
+exit 1

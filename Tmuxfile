@@ -1,0 +1,35 @@
+#!/bin/bash
+# Tmuxfile for PayReady AI development environment
+
+SESSION="payready"
+
+# Kill existing session if it exists
+tmux kill-session -t $SESSION 2>/dev/null
+
+# Create new session
+tmux new-session -d -s $SESSION -n gateway
+
+# Window 0: Gateway
+tmux send-keys -t $SESSION:0 'cd ~/payready-ai && uv run uvicorn gateway.main:app --port 8000 --reload' C-m
+
+# Window 1: RAG Service
+tmux new-window -t $SESSION:1 -n rag
+tmux send-keys -t $SESSION:1 'cd ~/payready-ai && uv run uvicorn local_rag.api:app --port 8787 --reload' C-m
+
+# Window 2: Orchestrator
+tmux new-window -t $SESSION:2 -n orchestrator
+tmux send-keys -t $SESSION:2 'cd ~/payready-ai && uv run python orchestrator/sophia.py' C-m
+
+# Window 3: Logs
+tmux new-window -t $SESSION:3 -n logs
+tmux send-keys -t $SESSION:3 'cd ~/payready-ai && tail -f *.log 2>/dev/null' C-m
+
+# Window 4: Shell
+tmux new-window -t $SESSION:4 -n shell
+tmux send-keys -t $SESSION:4 'cd ~/payready-ai && echo "PayReady AI Shell"' C-m
+
+# Select first window
+tmux select-window -t $SESSION:0
+
+# Attach to session
+tmux attach -t $SESSION

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import logging.config
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -61,16 +62,37 @@ class EnvSettings(BaseSettings):
         case_sensitive = True
 
 
+class ResearchEnvSettings(BaseSettings):
+    brave_api_key: Optional[str] = Field(default=None, alias="BRAVE_API_KEY")
+    serper_api_key: Optional[str] = Field(default=None, alias="SERPER_API_KEY")
+    tavily_api_key: Optional[str] = Field(default=None, alias="TAVILY_API_KEY")
+    firecrawl_api_key: Optional[str] = Field(default=None, alias="FIRECRAWL_API_KEY")
+    browserless_api_key: Optional[str] = Field(default=None, alias="BROWSERLESS_API_KEY")
+    zenrows_api_key: Optional[str] = Field(default=None, alias="ZENROWS_API_KEY")
+    apify_api_token: Optional[str] = Field(default=None, alias="APIFY_API_TOKEN")
+    perplexity_api_key: Optional[str] = Field(default=None, alias="PERPLEXITY_API_KEY")
+    exa_api_key: Optional[str] = Field(default=None, alias="EXA_API_KEY")
+    research_default_provider: Optional[str] = Field(default=None, alias="RESEARCH_DEFAULT_PROVIDER")
+    research_max_results: Optional[int] = Field(default=None, alias="RESEARCH_MAX_RESULTS")
+
+    class Config:
+        extra = "allow"
+        case_sensitive = True
+
+
 class Settings(BaseModel):
     portkey: PortkeyConfig
     openrouter_api_key: Optional[str]
     agents: AgentsConfig
     logging_config: Path = Path("config/logging.toml")
+    research: ResearchEnvSettings
 
 
-def _load_env_file(path: Path) -> Dict[str, str]:
+def _load_env_file(path: Path, *, required: bool = True) -> Dict[str, str]:
     if not path.exists():
-        raise FileNotFoundError(f"Missing configuration file: {path}")
+        if required:
+            raise FileNotFoundError(f"Missing configuration file: {path}")
+        return {}
     data: Dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -81,6 +103,16 @@ def _load_env_file(path: Path) -> Dict[str, str]:
         key, value = line.split("=", 1)
         data[key.strip()] = value.strip().strip('"')
     return data
+
+
+def _merge_with_env(data: Dict[str, str], model: type[BaseSettings]) -> Dict[str, str]:
+    merged = {}
+    for field in model.model_fields.values():
+        alias = field.alias or field.serialization_alias or field.name
+        if alias in os.environ and os.environ[alias]:
+            merged[alias] = os.environ[alias]
+    merged.update(data)
+    return merged
 
 
 def _load_agents_file(path: Path) -> Dict[str, Any]:
@@ -94,13 +126,14 @@ def _load_agents_file(path: Path) -> Dict[str, Any]:
 def load_settings(
     ports_path: Optional[Path] = None,
     agents_path: Optional[Path] = None,
+    research_path: Optional[Path] = None,
 ) -> Settings:
     ports_file = ports_path or Path("config") / "ports.env"
     agents_file = agents_path or Path("config") / "agents.toml"
 
     env_data = _load_env_file(ports_file)
     try:
-        env_settings = EnvSettings(**env_data)
+        env_settings = EnvSettings(**_merge_with_env(env_data, EnvSettings))
     except ValidationError as exc:
         raise RuntimeError(f"Invalid ports.env configuration: {exc}") from exc
 
@@ -109,6 +142,13 @@ def load_settings(
         agents_config = AgentsConfig(**agents_data)
     except ValidationError as exc:
         raise RuntimeError(f"Invalid agents.toml configuration: {exc}") from exc
+
+    research_file = research_path or Path("config") / "research.env"
+    research_data = _load_env_file(research_file, required=False)
+    try:
+        research_settings = ResearchEnvSettings(**_merge_with_env(research_data, ResearchEnvSettings))
+    except ValidationError as exc:
+        raise RuntimeError(f"Invalid research.env configuration: {exc}") from exc
 
     portkey_cfg = PortkeyConfig(
         api_key=env_settings.portkey_api_key,
@@ -120,6 +160,7 @@ def load_settings(
         portkey=portkey_cfg,
         openrouter_api_key=env_settings.openrouter_api_key,
         agents=agents_config,
+        research=research_settings,
     )
 
 

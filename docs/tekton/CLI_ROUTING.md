@@ -10,6 +10,7 @@ while sharing the same context and artifact layout as the Diamond workflow.
 payready-cli claude "Summarize latest Tekton decisions"
 payready-cli codex "Generate tests for tekton.swarm" --model openai/gpt-5-codex
 payready-cli agno "Implement blended RAG pipeline" --dry-run
+payready-cli diamond "Ship webhook reliability fixes" --from plan --to release
 ```
 
 Global options:

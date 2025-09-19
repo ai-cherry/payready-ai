@@ -11,7 +11,8 @@ and exposes its own API and interface.
   stage ordering, and maps command-line options to runtime configuration (stage
   bounds, consensus-free, model overrides, output directories).
 - **Typer front door (`payready-cli`)** – routes single prompts to Claude, Codex,
-  or the Agno swarm while writing memory artifacts alongside the Diamond runner.
+  or the Agno swarm and now exposes `diamond` so the staged workflow can be
+  launched without leaving the unified CLI.
 - **Runtime (`tekton/swarm.py`)** – orchestrates Plan→Release stages, streams
 structured events, persists artifacts, and shares context between stages.
 - **Agents (`tekton/stages/*.py`)** – construct triads per stage, invoke the

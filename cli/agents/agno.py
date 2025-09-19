@@ -23,9 +23,6 @@ Tests: {tests}
 Notes: {notes}
 """
 
-OUT_DIR = Path("out")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def _context_blob(context: Dict[str, Any], max_chars: int) -> str:
     sections: list[str] = []
@@ -252,33 +249,38 @@ def run(
             "success": False,
             "error": str(exc),
         }
-        metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        metadata.update(provider_metadata("agno", model_override or agno_cfg.coder_model))
+        metadata.update(collect_repo_state(memory_dir.parent))
+        metadata_path.write_text(json.dumps(redact_payload(metadata), indent=2), encoding="utf-8")
         append_jsonl(
             memory_dir / "events.jsonl",
-            {
-                "timestamp": start_ts.isoformat(),
-                "agent": "agno",
-                "command": "agno",
-                "output_preview": metadata["error"],
-                "metadata": metadata,
-            },
+            redact_payload(
+                {
+                    "timestamp": start_ts.isoformat(),
+                    "agent": "agno",
+                    "command": "agno",
+                    "output_preview": metadata["error"],
+                    "metadata": metadata,
+                }
+            ),
         )
         append_text(
             memory_dir / "session-log.md",
-            SESSION_SECTION_TEMPLATE.format(
-                timestamp=start_ts.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                task=task,
-                status="FAILED",
-                decisions="-",
-                tests="-",
-                notes=metadata["error"],
+            redact_text(
+                SESSION_SECTION_TEMPLATE.format(
+                    timestamp=start_ts.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    task=task,
+                    status="FAILED",
+                    decisions="-",
+                    tests="-",
+                    notes=metadata["error"],
+                )
             ),
         )
         raise typer.Exit(code=1) from exc
 
     serialized = _serialize_result(result)
-    timestamp = start_ts.strftime("%Y%m%dT%H%M%S%fZ")
-    artifact_path = OUT_DIR / f"agno_{timestamp}.json"
+    artifact_path = run_dir / "artifact.json"
     sanitized_serialized = redact_payload(serialized)
     artifact_path.write_text(json.dumps(sanitized_serialized, indent=2), encoding="utf-8")
     response_path.write_text(json.dumps(sanitized_serialized, indent=2), encoding="utf-8")

@@ -85,6 +85,8 @@ payready prompt "write a Python function to process payments"
 payready-cli claude "Summarize yesterday's deployment"
 payready-cli codex "Generate regression tests" --model openai/gpt-5-codex
 payready-cli agno "Draft RAG migration plan" --dry-run
+payready-cli research "Latest GPT-5 Codex updates" --provider brave
+payready-cli diamond "Improve webhook retries" --consensus-free code
 ```
 
 ## Architecture 🏗️
@@ -125,6 +127,8 @@ All tools include automatic date context with a 100-day cutoff for current infor
 | `payready-cli claude "..."` | Route a single prompt to Claude with shared memory/context |
 | `payready-cli codex "..."` | Invoke the Codex CLI with shared memory/context |
 | `payready-cli agno "..." --dry-run` | Launch the Agno planner/coder/reviewer swarm |
+| `payready-cli research "..."` | Query configured web-research providers with redacted logging |
+| `payready-cli diamond "..."` | Run the Diamond workflow from the Typer front door |
 | `python scripts/index_repo.py` | Rebuild local knowledge base (future RAG pipeline) |
 
 ## Documentation 📖

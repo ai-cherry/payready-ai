@@ -51,6 +51,7 @@ Every executed command appends to `.project/memory/session-log.md` and
 payready-cli claude "Summarize yesterday's deployment"
 payready-cli codex "Refactor tekton runtime" --model openai/gpt-5-codex
 payready-cli agno "Draft RAG migration plan" --dry-run
+payready-cli diamond "Improve webhook reliability"
 ```
 
 Use `payready tekton …` when you want the full staged Diamond workflow. The legacy

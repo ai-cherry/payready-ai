@@ -6,7 +6,7 @@
 **Status**: Active
 
 ## Overview
-PayReady AI implements a unified architecture integrating Claude CLI, Codex (GPT-5), and Agno agents into a cohesive development environment with intelligent routing, live context management, and comprehensive documentation.
+PayReady AI implements a simplified unified CLI architecture with OpenRouter integration, intelligent model routing, local memory management, and optimized context tracking. This document describes the planned architecture (see CURRENT_IMPLEMENTATION.md for actual implementation).
 
 ## System Architecture
 

@@ -1,0 +1,20 @@
+[claude]
+model = "anthropic/claude-3-5-sonnet"
+temperature = 0.2
+max_tokens = 1200
+max_context_chars = 6000
+system_prompt = "You are Claude assisting PayReady engineers via the unified CLI. Follow policies, be concise, and respect provided context."
+http_timeout = 45.0
+
+[codex]
+binary = "codex"
+model = "openai/gpt-5-codex"
+flags = ["--fast"]
+timeout_sec = 300.0
+max_context_chars = 4000
+
+[agno]
+planner_model = "anthropic/claude-3-5-sonnet"
+coder_model = "openai/gpt-5-codex"
+reviewer_model = "anthropic/claude-3-5-sonnet"
+max_context_chars = 6000

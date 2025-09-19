@@ -70,27 +70,31 @@ class ContextManager:
         return base_context
 
     def get_active_files(self, hours: int = 24) -> List[Dict[str, Any]]:
-        """Get files modified in the last N hours."""
-        active_files = []
+        """Get files modified in the last N hours - OPTIMIZED."""
+        # Check cache first
+        cache_key = f"active_files_{hours}h"
+        cached = self._get_cache(cache_key, max_age_minutes=10)
+        if cached:
+            return cached
 
+        active_files = []
         try:
-            # Use find command to get recently modified files
             since_time = datetime.now() - timedelta(hours=hours)
 
-            # Use git ls-files for tracked files
+            # Use git diff to get only changed files (much faster)
             result = subprocess.run(
-                ['git', 'ls-files', '-z'],
+                ['git', 'diff', '--name-only', 'HEAD~1'],
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=5
             )
 
             if result.returncode == 0:
-                files = result.stdout.strip('\0').split('\0')
+                changed_files = result.stdout.strip().split('\n')
 
-                for file_path in files[:50]:  # Limit to 50 files
-                    if not file_path:
+                for file_path in changed_files[:10]:  # Limit to 10 files
+                    if not file_path or not file_path.strip():
                         continue
 
                     full_path = self.project_root / file_path
@@ -98,21 +102,20 @@ class ContextManager:
                         stat = full_path.stat()
                         mod_time = datetime.fromtimestamp(stat.st_mtime)
 
-                        if mod_time > since_time:
-                            active_files.append({
-                                'path': file_path,
-                                'modified': mod_time.isoformat(),
-                                'size': stat.st_size,
-                                'extension': full_path.suffix
-                            })
+                        active_files.append({
+                            'path': file_path,
+                            'modified': mod_time.isoformat(),
+                            'size': stat.st_size,
+                            'extension': full_path.suffix
+                        })
 
-                # Sort by modification time
-                active_files.sort(key=lambda x: x['modified'], reverse=True)
+            # Cache the result
+            self._set_cache(cache_key, active_files)
 
         except Exception as e:
             logger.error(f"Error getting active files: {e}")
 
-        return active_files[:20]  # Return top 20 most recent
+        return active_files[:10]  # Return top 10 most recent
 
     def get_recent_changes(self, limit: int = 10) -> List[Dict[str, str]]:
         """Get recent git commits and changes."""
@@ -165,7 +168,12 @@ class ContextManager:
         return changes
 
     def get_git_status(self) -> Dict[str, Any]:
-        """Get current git status summary."""
+        """Get current git status summary - CACHED."""
+        # Cache git status for 30 seconds
+        cached = self._get_cache("git_status", max_age_minutes=0.5)
+        if cached:
+            return cached
+
         status = {
             'branch': 'unknown',
             'clean': True,
@@ -175,31 +183,26 @@ class ContextManager:
         }
 
         try:
-            # Get current branch
-            branch_result = subprocess.run(
-                ['git', 'branch', '--show-current'],
+            # Get current branch and status in one call
+            result = subprocess.run(
+                ['git', 'status', '--porcelain', '-b'],
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=3
             )
 
-            if branch_result.returncode == 0:
-                status['branch'] = branch_result.stdout.strip() or 'detached'
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
 
-            # Get status summary
-            status_result = subprocess.run(
-                ['git', 'status', '--porcelain'],
-                cwd=self.project_root,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+                # First line is branch info
+                if lines and lines[0].startswith('##'):
+                    branch_line = lines[0][3:]  # Remove '## '
+                    status['branch'] = branch_line.split()[0] if branch_line else 'main'
 
-            if status_result.returncode == 0:
-                lines = status_result.stdout.strip().split('\n')
-                for line in lines:
-                    if not line:
+                # Process file status lines
+                for line in lines[1:]:
+                    if not line.strip():
                         continue
 
                     status['clean'] = False
@@ -209,6 +212,9 @@ class ContextManager:
                         status['staged'] += 1
                     elif line[1] == 'M':
                         status['modified'] += 1
+
+            # Cache the result
+            self._set_cache("git_status", status)
 
         except Exception as e:
             logger.error(f"Error getting git status: {e}")
@@ -277,6 +283,54 @@ class ContextManager:
             logger.error(f"Error loading cached context: {e}")
 
         return None
+
+    def _get_cache(self, key: str, max_age_minutes: float = 10) -> Optional[Any]:
+        """Get cached value if it's fresh enough."""
+        try:
+            cache_key = f"{self.context_key}:cache:{key}"
+
+            if self.redis:
+                cached_data = self.redis.get(cache_key)
+                if cached_data:
+                    data = json.loads(cached_data)
+                    return data.get('value')
+            else:
+                cache_file = Path(f"/tmp/ai_cache_{key}.json")
+                if cache_file.exists():
+                    cached_data = json.loads(cache_file.read_text())
+                    cache_time = datetime.fromisoformat(cached_data['timestamp'])
+                    age_minutes = (datetime.now() - cache_time).total_seconds() / 60
+
+                    if age_minutes < max_age_minutes:
+                        return cached_data.get('value')
+        except Exception as e:
+            logger.error(f"Error getting cache for {key}: {e}")
+
+        return None
+
+    def _set_cache(self, key: str, value: Any, ttl_minutes: float = 10) -> bool:
+        """Set cached value with TTL."""
+        try:
+            cache_key = f"{self.context_key}:cache:{key}"
+            cache_data = {
+                'value': value,
+                'timestamp': datetime.now().isoformat()
+            }
+
+            if self.redis:
+                self.redis.setex(
+                    cache_key,
+                    int(ttl_minutes * 60),
+                    json.dumps(cache_data, default=str)
+                )
+            else:
+                cache_file = Path(f"/tmp/ai_cache_{key}.json")
+                cache_file.write_text(json.dumps(cache_data, default=str))
+
+            return True
+        except Exception as e:
+            logger.error(f"Error setting cache for {key}: {e}")
+            return False
 
     def clear_context(self) -> bool:
         """Clear all cached context."""

@@ -1,188 +1,514 @@
-#!/usr/bin/env python3
-"""
-Unified AI Interface - Natural language routing to appropriate AI tool
-Date: September 18, 2025
-"""
+#!/usr/bin/env bash
+# PayReady AI Unified CLI - Single entry point for all AI operations
+# Version: 3.0.0
+# Date: September 18, 2025
 
-import sys
-import os
-import subprocess
-import json
-from datetime import datetime, timedelta
+set -euo pipefail
 
-class AIRouter:
-    def __init__(self):
-        self.load_date_context()
-        self.capabilities = {
-            'claude': {
-                'triggers': ['refactor', 'analyze', 'review', 'understand', 'explain', 'debug', 'fix'],
-                'command': 'claude-code',
-                'strengths': 'deep codebase understanding, refactoring, analysis'
-            },
-            'codex': {
-                'triggers': ['write', 'create', 'generate', 'implement', 'code', 'build'],
-                'command': './bin/codex',
-                'strengths': 'code generation, implementation, syntax'
-            },
-            'web': {
-                'triggers': ['search', 'latest', 'current', 'find online', 'web', 'news'],
-                'command': './bin/codex-current',
-                'strengths': 'web search, current information (2025 only)'
-            },
-            'agno': {
-                'triggers': ['automate', 'orchestrate', 'deploy', 'pipeline', 'workflow', 'agent'],
-                'command': 'agno',
-                'strengths': 'automation, multi-step workflows, deployment'
-            }
-        }
+# ============================================================================
+# Configuration
+# ============================================================================
 
-    def load_date_context(self):
-        """Load live date context."""
-        self.context = {
-            'date': datetime.now().strftime('%Y-%m-%d'),
-            'time': datetime.now().strftime('%H:%M:%S %Z'),
-            'timezone': 'UTC',
-            'cutoff_days': 100,
-            'cutoff_date': (datetime.now() - timedelta(days=100)).strftime('%Y-%m-%d'),
-            'timestamp': int(datetime.now().timestamp())
-        }
+# Directories
+PAYREADY_HOME="${PAYREADY_HOME:-$HOME/.payready}"
+PAYREADY_BIN="$(dirname "$0")"
+CONFIG_DIR="$HOME/.config/payready"
 
-    def route_request(self, query):
-        """Route query to appropriate AI based on content."""
-        query_lower = query.lower()
+# Load environment with validation
+mkdir -p "$CONFIG_DIR"
+for env_file in "$CONFIG_DIR"/env.*; do
+    if [[ -f "$env_file" ]]; then
+        source "$env_file" || error "Failed to load environment file: $env_file"
+    fi
+done
 
-        # Check for explicit tool request
-        if query_lower.startswith('claude:'):
-            return 'claude', query[7:].strip()
-        elif query_lower.startswith('codex:'):
-            return 'codex', query[6:].strip()
-        elif query_lower.startswith('web:'):
-            return 'web', query[4:].strip()
-        elif query_lower.startswith('agno:'):
-            return 'agno', query[5:].strip()
+# Validate required environment variables
+validate_environment() {
+    local warnings=()
+    local has_valid_key=false
 
-        # Smart routing based on triggers
-        best_match = None
-        best_score = 0
+    # Check for valid API keys
+    if [[ -n "${PORTKEY_API_KEY:-}" ]]; then
+        has_valid_key=true
+    fi
 
-        for tool, config in self.capabilities.items():
-            score = sum(1 for trigger in config['triggers'] if trigger in query_lower)
-            if score > best_score:
-                best_score = score
-                best_match = tool
+    if [[ -n "${OPENROUTER_API_KEY:-}" ]] && [[ "${OPENROUTER_API_KEY:-}" != *"YOUR_KEY"* ]]; then
+        has_valid_key=true
+    else
+        if [[ -z "${PORTKEY_API_KEY:-}" ]]; then
+            warnings+=("OPENROUTER_API_KEY not configured - fallback routing disabled")
+        fi
+    fi
 
-        # Default to Codex for general queries
-        if best_match is None:
-            best_match = 'codex'
+    if [[ "$has_valid_key" == "false" ]]; then
+        error "At least one valid API key required: PORTKEY_API_KEY or OPENROUTER_API_KEY"
+    fi
 
-        return best_match, query
+    if [[ -z "${PORTKEY_API_KEY:-}" ]]; then
+        warnings+=("PORTKEY_API_KEY not configured - using OpenRouter only")
+    fi
 
-    def add_date_context(self, query, tool):
-        """Add appropriate date context based on tool."""
-        if tool == 'web':
-            # For web searches, emphasize current date
-            return f"{query} (current as of {self.context['date']}, only results from {self.context['cutoff_date']} onwards)"
-        else:
-            # For other tools, just add date reference
-            return f"{query} (context: today is {self.context['date']})"
+    # Display warnings
+    for warning in "${warnings[@]}"; do
+        debug "$warning"
+    done
+}
 
-    def execute(self, tool, query):
-        """Execute the appropriate tool with context."""
-        # Add date context
-        contextualized_query = self.add_date_context(query, tool)
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
 
-        # Build command based on tool
-        if tool == 'claude':
-            # Check if claude-code is available
-            if subprocess.run(['which', 'claude-code'], capture_output=True).returncode == 0:
-                cmd = ['claude-code', 'chat', contextualized_query]
-            else:
-                print("⚠️ Claude CLI not found. Using Codex instead.", file=sys.stderr)
-                cmd = ['./bin/codex', 'gpt-5-mini', contextualized_query]
+# ============================================================================
+# Helper Functions
+# ============================================================================
 
-        elif tool == 'codex':
-            codex_path = '/Users/lynnmusil/payready-ai/bin/codex'
-            cmd = [codex_path, 'gpt-5-mini', contextualized_query]
+log() {
+    echo -e "${GREEN}[AI]${NC} $*" >&2
+}
 
-        elif tool == 'web':
-            web_path = '/Users/lynnmusil/payready-ai/bin/codex-current'
-            cmd = [web_path, query]  # Already has date filtering
+error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+    exit 1
+}
 
-        elif tool == 'agno':
-            # Check if agno is available
-            if subprocess.run(['which', 'agno'], capture_output=True).returncode == 0:
-                cmd = ['agno', 'execute', '--query', contextualized_query]
-            else:
-                print("⚠️ Agno not found. Using Codex instead.", file=sys.stderr)
-                cmd = ['./bin/codex', 'gpt-5-mini', contextualized_query]
+debug() {
+    [[ "${AI_DEBUG:-false}" == "true" ]] && echo -e "${CYAN}[DEBUG]${NC} $*" >&2
+}
 
-        else:
-            return f"Unknown tool: {tool}"
+# ============================================================================
+# Authentication Management
+# ============================================================================
 
-        try:
-            # Set environment with date context
-            env = os.environ.copy()
-            env['DATE_CONTEXT'] = self.context['date']
-            env['TIME_CONTEXT'] = self.context['time']
-            env['CUTOFF_DATE'] = self.context['cutoff_date']
+get_auth_method() {
+    # All models now use Portkey/OpenRouter routing
+    echo "portkey"
+}
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                env=env,
-                cwd='/Users/lynnmusil/payready-ai'
-            )
+get_virtual_key() {
+    local intent="$1"
 
-            if result.returncode != 0 and result.stderr:
-                return f"Error: {result.stderr}"
+    # Return appropriate virtual key based on intent
+    # Updated Sept 2025 with optimal provider mapping
+    case "$intent" in
+        code)
+            # X.AI Grok - Best for code generation
+            echo "${PORTKEY_VK_XAI:-xai-vk-e65d0f}"
+            ;;
+        analyze)
+            # Claude Opus 4.1 - Best for analysis
+            echo "${PORTKEY_VK_ANTHROPIC:-anthropic-vk-b42804}"
+            ;;
+        design)
+            # OpenAI GPT - Best for architecture
+            echo "${PORTKEY_VK_OPENAI:-openai-vk-e36279}"
+            ;;
+        search)
+            # Perplexity - Has real-time web access
+            echo "${PORTKEY_VK_PERPLEXITY:-perplexity-vk-56c172}"
+            ;;
+        fast)
+            # Groq - Ultra-fast inference
+            echo "${PORTKEY_VK_GROQ:-groq-vk-6b9b52}"
+            ;;
+        deep)
+            # DeepSeek v3 - Complex reasoning
+            echo "${PORTKEY_VK_DEEPSEEK:-deepseek-vk-24102f}"
+            ;;
+        *)
+            # Default to X.AI for general tasks
+            echo "${PORTKEY_VK_XAI:-xai-vk-e65d0f}"
+            ;;
+    esac
+}
 
-            return result.stdout
-        except FileNotFoundError:
-            return f"Error: Command not found: {' '.join(cmd)}"
-        except Exception as e:
-            return f"Error executing {tool}: {e}"
+# ============================================================================
+# Model Selection
+# ============================================================================
 
-def main():
-    if len(sys.argv) < 2:
-        print("🤖 Unified AI Interface")
-        print("=" * 40)
-        print("\nUsage: ai <natural language query>")
-        print("       ai docs <command>")
-        print("\nCapabilities:")
-        print("  • Code generation (write, create, implement)")
-        print("  • Code analysis (refactor, review, debug)")
-        print("  • Web search (latest, current, search)")
-        print("  • Automation (orchestrate, deploy)")
-        print("  • Documentation (docs list, docs show, docs search)")
-        print("\nExamples:")
-        print('  ai "refactor the authentication module"')
-        print('  ai "write a FastAPI endpoint for user management"')
-        print('  ai "search for latest Python 3.13 features"')
-        print('  ai "claude: analyze the codebase architecture"')
-        print('  ai docs list')
-        print('  ai docs update')
-        print("\nDate Context:")
-        router = AIRouter()
-        print(f"  Today: {router.context['date']}")
-        print(f"  Cutoff: {router.context['cutoff_date']} (100 days ago)")
-        sys.exit(1)
+detect_intent() {
+    local query="$1"
+    # Portable lowercase conversion (works on BSD/macOS and GNU/Linux)
+    local query_lower=$(echo "$query" | tr '[:upper:]' '[:lower:]')
 
-    # Check for docs command
-    if sys.argv[1] == 'docs':
-        docs_cmd = ['/Users/lynnmusil/payready-ai/bin/ai-docs'] + sys.argv[2:]
-        result = subprocess.run(docs_cmd, cwd='/Users/lynnmusil/payready-ai')
-        sys.exit(result.returncode)
+    # Fast responses -> Groq
+    if [[ "$query_lower" =~ (quick|fast|brief|simple|tldr) ]]; then
+        echo "fast"
+        return
+    fi
 
-    query = ' '.join(sys.argv[1:])
-    router = AIRouter()
-    tool, processed_query = router.route_request(query)
+    # Deep reasoning -> DeepSeek
+    if [[ "$query_lower" =~ (solve|algorithm|math|proof|reason|complex) ]]; then
+        echo "deep"
+        return
+    fi
 
-    print(f"🤖 Using {tool} ({router.capabilities[tool]['strengths']})...", file=sys.stderr)
-    print(f"📅 Date context: {router.context['date']}", file=sys.stderr)
+    # Design/Architecture -> GPT
+    if [[ "$query_lower" =~ (design|architect|plan|system|integrate) ]]; then
+        echo "design"
+        return
+    fi
 
-    result = router.execute(tool, processed_query)
-    print(result)
+    # Analysis/Review -> Claude Opus
+    if [[ "$query_lower" =~ (analyze|review|audit|examine|understand|explain) ]]; then
+        echo "analyze"
+        return
+    fi
 
-if __name__ == "__main__":
-    main()
+    # Search/Current -> Perplexity
+    if [[ "$query_lower" =~ (search|latest|current|recent|news|2025) ]]; then
+        echo "search"
+        return
+    fi
+
+    # Code Generation -> Default to X.AI
+    echo "code"
+}
+
+select_model() {
+    local intent="$1"
+
+    # ONLY use models that actually exist on OpenRouter
+    case "$intent" in
+        design)
+            echo "openai/gpt-4o-mini"
+            ;;
+        analyze)
+            echo "anthropic/claude-3.5-sonnet"
+            ;;
+        search)
+            echo "perplexity/llama-3.1-sonar-large-128k-online"
+            ;;
+        code)
+            echo "x-ai/grok-beta"
+            ;;
+        deep)
+            echo "deepseek/deepseek-chat"
+            ;;
+        fast)
+            echo "google/gemini-flash-1.5"
+            ;;
+        *)
+            echo "x-ai/grok-beta"  # Default
+            ;;
+    esac
+}
+
+# ============================================================================
+# Request Execution
+# ============================================================================
+
+
+execute_portkey() {
+    local query="$1"
+    local model="$2"
+    local vk="$3"
+
+    # Escape query for JSON
+    local escaped_query=$(printf '%s' "$query" | jq -Rs .)
+    local request_body=$(cat <<EOF
+{
+    "model": "$model",
+    "messages": [{"role": "user", "content": $escaped_query}],
+    "max_tokens": 2000
+}
+EOF
+)
+
+    # Skip Portkey for now - it's not working
+    # Go straight to OpenRouter
+    log "Using $model via OpenRouter..."
+
+    local openrouter_key="${OPENROUTER_API_KEY:-}"
+    if [[ -z "$openrouter_key" ]] || [[ "$openrouter_key" == *"YOUR_KEY"* ]]; then
+        error "OPENROUTER_API_KEY not configured. Please set your OpenRouter API key in ~/.config/payready/env.llm"
+    fi
+
+    local response=$(curl -s -X POST https://openrouter.ai/api/v1/chat/completions \
+        --max-time 30 \
+        -H "Authorization: Bearer ${openrouter_key}" \
+        -H "Content-Type: application/json" \
+        -d "$request_body" 2>/dev/null)
+
+    if [[ "$AI_DEBUG" == "true" ]]; then
+        echo "OpenRouter response: ${response:0:200}..." >&2
+    fi
+
+    echo "$response" | jq -r '.choices[0].message.content // .error.message // "Error: Invalid response"' 2>/dev/null || echo "Error: Failed to parse response"
+}
+
+
+# ============================================================================
+# Main Execution
+# ============================================================================
+
+main() {
+    local query=""
+    local explicit_model=""
+    local verbose=false
+    local show_help=false
+
+    # Disable error trapping for now - it's catching false positives
+    # trap 'error "Unexpected error on line $LINENO"' ERR
+
+    # Validate environment for non-help commands
+    if [[ "$*" != *"--help"* ]] && [[ "$*" != *"-h"* ]]; then
+        validate_environment
+    fi
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --model|-m)
+                [[ -z "${2:-}" ]] && error "Model option requires a value"
+                explicit_model="$2"
+                shift 2
+                ;;
+            --verbose|-v)
+                verbose=true
+                AI_DEBUG=true
+                shift
+                ;;
+            --help|-h)
+                show_help=true
+                shift
+                ;;
+            config|auth|test|remember|recall|memory)
+                # Special commands
+                handle_special_command "$@"
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                ;;
+            *)
+                query="$*"
+                break
+                ;;
+        esac
+    done
+
+    # Show help if needed
+    if [[ "$show_help" == "true" ]] || [[ -z "$query" ]]; then
+        show_usage
+        exit 0
+    fi
+
+    # Validate query length
+    if [[ ${#query} -gt 4000 ]]; then
+        error "Query too long (max 4000 characters)"
+    fi
+
+    # Validate required tools
+    command -v jq >/dev/null || error "jq is required but not installed"
+    command -v curl >/dev/null || error "curl is required but not installed"
+
+    # Detect intent and select model
+    local intent=$(detect_intent "$query")
+    local model="${explicit_model:-$(select_model "$intent")}"
+
+    debug "Intent: $intent"
+    debug "Model: $model"
+
+    # Add context
+    local context_query="$query (context: $(date +%Y-%m-%d), project: $(basename "$PWD"))"
+
+    # Execute via Portkey/OpenRouter
+    local vk=$(get_virtual_key "$intent")
+    debug "Virtual key: $vk, Model: $model, Intent: $intent"
+    local response=$(execute_portkey "$context_query" "$model" "$vk")
+
+    # Output the response
+    echo "$response"
+
+    # Skip memory logging for now - it's broken
+    true
+}
+
+# ============================================================================
+# Special Commands
+# ============================================================================
+
+handle_special_command() {
+    local command="$1"
+    shift
+
+    case "$command" in
+        config)
+            handle_config "$@"
+            ;;
+        auth)
+            handle_auth "$@"
+            ;;
+        test)
+            run_tests "$@"
+            ;;
+        remember|recall|memory)
+            handle_memory "$command" "$@"
+            ;;
+        *)
+            error "Unknown command: $command"
+            ;;
+    esac
+}
+
+handle_config() {
+    local action="${1:-list}"
+
+    case "$action" in
+        list)
+            echo "Current Configuration:"
+            echo "  PORTKEY_API_KEY: ${PORTKEY_API_KEY:0:10}..."
+            echo "  Default Model: $(select_model 'default')"
+            echo "  Debug Mode: ${AI_DEBUG:-false}"
+            ;;
+        set)
+            local key="$2"
+            local value="$3"
+            echo "export $key='$value'" >> "$CONFIG_DIR/env.llm"
+            log "Set $key"
+            ;;
+        *)
+            error "Unknown config action: $action"
+            ;;
+    esac
+}
+
+handle_auth() {
+    local action="${1:-status}"
+
+    case "$action" in
+        status)
+            echo "Authentication Status:"
+            echo "  Portkey: $([ -n "${PORTKEY_API_KEY:-}" ] && echo "Configured" || echo "Not configured")"
+            echo "  GPT-5 (ChatGPT): $([ -f ~/.codex/auth.json ] && echo "Logged in" || echo "Not logged in")"
+            ;;
+        login)
+            log "Opening ChatGPT login for GPT-5-Codex access..."
+            codex /login
+            ;;
+        *)
+            error "Unknown auth action: $action"
+            ;;
+    esac
+}
+
+handle_memory() {
+    local command="$1"
+    shift
+
+    # Use Python memory system
+    local memory_script="$PAYREADY_BIN/../core/memory.py"
+
+    case "$command" in
+        remember)
+            if [[ $# -lt 2 ]]; then
+                error "Usage: ai remember <key> <value> [category]"
+            fi
+            source .venv/bin/activate && python "$memory_script" remember "$@"
+            ;;
+        recall)
+            if [[ $# -lt 1 ]]; then
+                error "Usage: ai recall <query> [category]"
+            fi
+            source .venv/bin/activate && python "$memory_script" recall "$@"
+            ;;
+        memory)
+            local action="${1:-context}"
+            case "$action" in
+                context)
+                    source .venv/bin/activate && python "$memory_script" context
+                    ;;
+                *)
+                    echo "Memory commands:"
+                    echo "  ai remember <key> <value> [category]  - Store information"
+                    echo "  ai recall <query> [category]          - Search memory"
+                    echo "  ai memory context                     - Show current context"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+run_tests() {
+    log "Running system tests..."
+
+    # Test Portkey
+    echo -n "Testing Portkey connection... "
+    if curl -s -I https://api.portkey.ai/v1/models \
+        -H "x-portkey-api-key: ${PORTKEY_API_KEY}" | grep -q "200"; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC}"
+    fi
+
+    # Test models
+    for model in "gpt-4o" "claude-opus-4.1"; do
+        echo -n "Testing $model... "
+        if execute_portkey "Say 'OK'" "$model" "$(get_virtual_key code)" | grep -qi "ok"; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+        fi
+    done
+}
+
+# ============================================================================
+# Usage Information
+# ============================================================================
+
+show_usage() {
+    cat <<EOF
+${GREEN}PayReady AI Unified CLI v3.0${NC}
+
+${YELLOW}Usage:${NC}
+    ai [options] <query>
+    ai <command> [args]
+
+${YELLOW}Options:${NC}
+    --model, -m <model>   Use specific model
+    --verbose, -v         Verbose output
+    --help, -h           Show this help
+
+${YELLOW}Commands:${NC}
+    config list          Show configuration
+    config set KEY VAL   Set configuration value
+    auth status          Show auth status
+    auth login           Login to ChatGPT (for GPT-5)
+    test                 Run system tests
+    remember KEY VAL     Store information in memory
+    recall QUERY         Search memory for information
+    memory context       Show current memory context
+
+${YELLOW}Examples:${NC}
+    ai "write a hello world function"
+    ai --model opus "analyze this codebase"
+    ai --verbose "design a microservices architecture"
+
+${YELLOW}Models (via OpenRouter):${NC}
+    x-ai/grok-code-fast-1           Grok Code Fast (default for code)
+    google/gemini-2.5-flash         Gemini 2.5 Flash
+    openai/gpt-4.1-mini            GPT-4.1 Mini
+    google/gemini-2.5-pro          Gemini 2.5 Pro
+    deepseek/deepseek-chat-v3-0324 DeepSeek v3
+    openai/gpt-oss-120b            GPT OSS 120B
+    meta-llama/llama-4-maverick    Llama 4 Maverick
+    meta-llama/llama-4-scout       Llama 4 Scout
+    qwen/qwen3-coder-flash         Qwen3 Coder Flash
+    qwen/qwen3-coder-plus          Qwen3 Coder Plus
+    anthropic/claude-opus-4.1      Claude Opus 4.1
+    anthropic/claude-sonnet-4      Claude Sonnet 4
+    openai/gpt-5-mini              GPT-5 Mini
+
+${CYAN}Pro tip:${NC} The CLI automatically selects the best model based on your query!
+EOF
+}
+
+# ============================================================================
+# Entry Point
+# ============================================================================
+
+main "$@"

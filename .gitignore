@@ -119,3 +119,7 @@ AUDIT_REPORT_*.md
 output/
 results/
 exports/
+.project/memory/
+!.project/memory/README.md
+out/
+!out/README.md

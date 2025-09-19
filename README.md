@@ -1,20 +1,48 @@
-# PayReady AI 🚀
+# PayReady AI · SOPHIA & Tekton 🚀
 
-Unified AI development environment integrating Claude CLI, Codex (GPT-5), and Agno agents for intelligent code generation, analysis, and automation.
+PayReady AI now ships two complementary experiences:
+
+- **SOPHIA** – the business intelligence dashboard and orchestration layer for
+  executives and analysts.
+- **Tekton** – the engineering builder’s toolchain powering the Diamond v5 swarm
+  workflow (Plan → Release) with Portkey routing, Codex GPT-5 access, Redis, RAG,
+  and the Threat & Compliance gate.
+
+## Key Concepts
+
+- **PayReady app** – this entire repository; SOPHIA and Tekton are sibling surfaces
+  that share infrastructure (Redis, Neon, vector stores, auth, logging).
+- **Tekton toolkit** – everything engineers touch: the Diamond workflow, the
+  unified CLI adapters, shared schemas, memory logs, and supporting scripts under
+  `cli/`, `tekton/`, `.project/`, and `scripts/`.
+- **PayReady CLI (`payready` command)** – thin dispatcher defined in
+  `payready/cli.py`. It exposes historical subcommands:
+  - `payready tekton …` → runs the asynchronous Diamond v5 workflow.
+  - `payready prompt …` → forwards to the legacy shell wrapper in `bin/ai`.
+- **PayReady CLI (Typer, `payready-cli`)** – the new terminal “front door” for
+  per-task swarms. Subcommands route to Claude, Codex, or Agno while sharing the
+  structured memory store.
+- **Diamond workflow** – staged Plan→Release swarm living in `tekton/`. It’s
+  currently launched via `payready tekton …` and produces schema-validated
+  artifacts per stage.
+- **Agent memory** – durable journals, JSONL events, and per-run folders stored
+  under `.project/memory/`; all CLI surfaces append here with redaction applied.
 
 ## Features ✨
 
-- **Unified Natural Language Interface**: Single entry point for all AI tools
-- **Intelligent Routing**: Automatically routes queries to the most appropriate AI
-- **Web Search Integration**: Real-time web search with strict 2025-only filtering
-- **Context-Aware Development**: Maintains project state across all tools
-- **Living Documentation**: Auto-updating documentation system
-- **Multi-Model Support**: Claude, GPT-5, GPT-5-mini, and specialized models
+- **Single `payready` Command**: Unified entrypoint with subcommands for Tekton workflows
+  and the legacy prompt runner.
+- **Tekton Diamond Swarm**: Stage-specific AI agents (Plan → Release) with
+  confidence-weighted mediation and artifact persistence.
+- **Intelligent Routing**: Portkey/OpenRouter model selection with manual overrides per run.
+- **Context-Aware Development**: Shared Redis/Postgres/Milvus layers maintain run history and RAG context.
+- **Living Documentation**: Auto-updating artifacts and docs keep SOPHIA and Tekton in sync.
+- **Multi-Model Support**: Claude, GPT-5, GPT-5-mini, DeepSeek, Grok, and more.
 
 ## Quick Start 🎯
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.11+
 - direnv
 - Git
 - API Keys for OpenAI and other services
@@ -22,84 +50,92 @@ Unified AI development environment integrating Claude CLI, Codex (GPT-5), and Ag
 ### Installation
 
 ```bash
+# (Use `python -m payready.cli` in place of `payready` if the console script is not installed.)
 # Clone the repository
 git clone https://github.com/ai-cherry/payready-ai.git
 cd payready-ai
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -e .
 
 # Configure environment
 direnv allow
 
 # Add your API keys to ~/.config/payready/env.llm
-echo 'export OPENAI_API_KEY="your-key-here"' >> ~/.config/payready/env.llm
+mkdir -p ~/.config/payready
+echo 'export OPENROUTER_API_KEY="your-key-here"' >> ~/.config/payready/env.llm
 ```
 
 ### Basic Usage
 
 ```bash
-# Natural language interface
-./bin/ai "write a Python function to process payments"
+# Launch Tekton Diamond workflow
+payready tekton --goal "Improve webhook retries"
 
-# Direct tool access
-./bin/codex "implement binary search"
-./bin/ai-router "refactor authentication module"
+# Inspect stage wiring without execution
+payready tekton --goal "..." --explain
 
-# Documentation management
-./bin/ai docs list
-./bin/ai docs update
+# Run code/test consensus-free (prefer runtime signals)
+payready tekton --goal "..." --consensus-free code test_debug
 
-# Code audit
-./bin/ai-audit
+# Legacy natural language prompt runner
+payready prompt "write a Python function to process payments"
+
+# Unified CLI agents (Typer-based)
+payready-cli claude "Summarize yesterday's deployment"
+payready-cli codex "Generate regression tests" --model openai/gpt-5-codex
+payready-cli agno "Draft RAG migration plan" --dry-run
 ```
 
 ## Architecture 🏗️
 
 ```
-┌─────────────────────────────────────────────┐
-│           Unified AI CLI (`ai`)            │
-│  Natural Language Interface & Router        │
-└──────────────┬──────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│       Diamond Triad Swarm (Plan → Release)   │
+│  Proponent / Skeptic / Pragmatist + Mediator │
+└──────────────┬───────────────────────────────┘
                │
-    ┌──────────┴──────────┬────────────┬─────────────┐
-    │                     │            │             │
-┌───▼────┐      ┌────────▼───┐  ┌─────▼────┐  ┌────▼────┐
-│ Claude │      │   Codex    │  │   Web    │  │  Agno   │
-│  CLI   │      │  (GPT-5)   │  │  Search  │  │  Agent  │
-└────────┘      └────────────┘  └──────────┘  └─────────┘
+    ┌──────────┴──────────┬────────────┬───────────────┐
+    │                     │            │               │
+┌───▼────┐      ┌────────▼───┐  ┌─────▼────┐  ┌──────▼─────┐
+│ Portkey │      │  Codex     │  │ Context  │  │ Redis / RAG │
+│ Routing │      │ GPT-5 CLI  │  │ Manager  │  │   Memory    │
+└────────┘      └────────────┘  └──────────┘  └─────────────┘
 ```
 
 ## Configuration 🔧
 
 ### Environment Files
 Store configuration in `~/.config/payready/`:
-- `env.llm` - OpenAI and Anthropic API keys
-- `env.web` - Web search API keys (Perplexity, Brave, Exa)
-- `env.github` - GitHub authentication
-- `env.agno` - Agno agent configuration
+- `env.core` – Core application settings (version, env, logging)
+- `env.llm` – Portkey API key, virtual keys, OpenRouter fallback, Codex settings
+- `env.services` – Redis/Mem0, vector store, Neon Postgres, BI integrations (e.g. Slack, Salesforce, NetSuite)
 
 ### Date Context
 All tools include automatic date context with a 100-day cutoff for current information filtering.
 
 ## Commands Reference 📚
 
-| Command | Description |
-|---------|-------------|
-| `ai <query>` | Natural language interface |
-| `ai docs list` | List all documentation |
-| `ai docs search <term>` | Search documentation |
-| `ai-audit` | Run comprehensive code audit |
-| `codex <prompt>` | Direct GPT-5 access |
-| `ai-router <query>` | Enhanced routing with confidence scoring |
-| `git-setup` | Configure GitHub integration |
+| Command | Purpose |
+|---------|---------|
+| `payready tekton --goal "..."` | Run the staged Diamond v5 workflow (Plan → Release) |
+| `payready tekton --explain` | Describe Diamond stage ordering & prompts |
+| `payready prompt <query>` | Legacy shell CLI (Portkey/OpenRouter routing) |
+| `payready prompt config list` | Inspect legacy CLI configuration |
+| `payready-cli claude "..."` | Route a single prompt to Claude with shared memory/context |
+| `payready-cli codex "..."` | Invoke the Codex CLI with shared memory/context |
+| `payready-cli agno "..." --dry-run` | Launch the Agno planner/coder/reviewer swarm |
+| `python scripts/index_repo.py` | Rebuild local knowledge base (future RAG pipeline) |
 
 ## Documentation 📖
 
 See the `docs/` directory for comprehensive documentation:
-- [Architecture](docs/ARCHITECTURE/UNIFIED_AI_INTEGRATION_ARCHITECTURE.md)
+- [SOPHIA Architecture](docs/ARCHITECTURE/UNIFIED_AI_INTEGRATION_ARCHITECTURE.md)
+- [Tekton Architecture](docs/tekton/ARCHITECTURE.md)
+- [Unified CLI Routing](docs/tekton/CLI_ROUTING.md)
 - [API Reference](docs/REFERENCES/CLI_REFERENCE.md)
 - [Setup Guide](docs/GUIDES/SETUP_GUIDE.md)
+- [Terminal Setup Guide](docs/SETUP_TERMINAL.md)
 
 ## Development 🛠️
 
@@ -119,9 +155,11 @@ pylint services/
 
 ### Debugging
 ```bash
-# Enable debug mode
-DEBUG=true ./bin/codex "your query"
-DEBUG=true ./bin/ai-router "your query"
+# Enable verbose routing logs
+AI_DEBUG=true payready prompt "design a service"
+
+# Inspect Diamond summary
+cat artifacts/diamond_summary.json
 ```
 
 ## Troubleshooting 🔍

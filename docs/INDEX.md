@@ -8,24 +8,30 @@
 ### 1. ARCHITECTURE
 Technical architecture and system design documents.
 
+- **[Current Implementation](ARCHITECTURE/CURRENT_IMPLEMENTATION.md)**
+  - Actual implemented architecture (v3.0)
+  - OpenRouter integration and model routing
+  - Memory and context systems
+  - *Status: Active - Reflects Reality*
+
 - **[CLI Unified AI Architecture](ARCHITECTURE/CLI_UNIFIED_AI_ARCHITECTURE.md)**
-  - Unified CLI system integrating Claude, Codex, Agno
-  - Intelligent routing and context management
-  - *Status: Active*
+  - Original planned architecture design
+  - Historical reference for development
+  - *Status: Legacy/Reference*
 
 - **[AI Coding Standards](ARCHITECTURE/AI_CODING_STANDARDS.md)**
   - Coding rules for AI-generated code
   - Prompt engineering templates
-  - AI persona configurations
   - *Status: Active*
 
 ### 2. GUIDES
 How-to guides and tutorials for developers and users.
 
-- **Setup Guide** (Coming Soon)
+- **[Setup Guide](GUIDES/SETUP_GUIDE.md)**
   - Installation instructions
   - Environment configuration
-  - First-time setup
+  - API key setup and testing
+  - *Status: Active*
 
 - **Development Guide** (Coming Soon)
   - Contributing guidelines
@@ -79,8 +85,7 @@ Architecture Decision Records (ADRs).
 |------|---------|----------|
 | `.envrc` | direnv configuration | Root |
 | `.gitignore` | Git exclusions | Root |
-| `requirements.txt` | Python dependencies | Root |
-| `pyproject.toml` | Project metadata | Root |
+| `pyproject.toml` | Python dependencies and metadata | Root |
 
 ## 🌐 GitHub Integration
 
@@ -123,34 +128,28 @@ Architecture Decision Records (ADRs).
 
 ## 🛠️ Documentation Tools
 
-### Management Commands
+### Available Commands
 ```bash
-# List all documentation
-ai docs list
+# Test the AI CLI
+ai "write a hello world function"
 
-# Search documentation
-ai docs search "term"
+# Memory commands
+ai remember "fact" "information"
+ai recall "query"
+ai memory context
 
-# Update live docs
-ai docs update
-
-# Validate consistency
-ai docs validate
-
-# Generate changelog
-ai docs changelog
+# System commands
+ai config list
+ai auth status
+ai test
 ```
 
-### Quick Access
+### Documentation Access
 ```bash
-# View specific document
-ai docs show CLI_REFERENCE
-
-# Open documentation index
-ai docs show INDEX
-
-# View current system state
-ai docs show CURRENT_STATE
+# View documentation files directly
+cat docs/INDEX.md
+cat docs/ARCHITECTURE/CLI_UNIFIED_AI_ARCHITECTURE.md
+cat docs/REFERENCES/CLI_REFERENCE.md
 ```
 
 ## 📝 Contributing to Documentation

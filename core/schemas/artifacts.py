@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, conlist, confloat
+from pydantic import BaseModel, Field, confloat
+from typing import Annotated
 
 Confidence = confloat(ge=0.0, le=1.0)
 
 
 class PlanArtifact(BaseModel):
-    goals: conlist(str, min_items=1)
+    goals: Annotated[List[str], Field(min_length=1)]
     milestones: List[str]
     acceptance_criteria: List[str]
     risks: List[str]
@@ -29,7 +30,7 @@ class ResearchOption(BaseModel):
 
 
 class ResearchArtifact(BaseModel):
-    options: conlist(ResearchOption, min_items=1)
+    options: Annotated[List[ResearchOption], Field(min_length=1)]
     decision_matrix: List[dict]
     chosen: str
     citations: List[str]
@@ -46,7 +47,7 @@ class BacklogItem(BaseModel):
 
 
 class BacklogArtifact(BaseModel):
-    items: conlist(BacklogItem, min_items=1)
+    items: Annotated[List[BacklogItem], Field(min_length=1)]
     plan_version: str
     confidence: Confidence
 

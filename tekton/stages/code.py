@@ -5,35 +5,38 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Dict
 
-from core.runtime import base_agent, SHELL, GIT, python_tool
+from core.agent_factory import get_factory
+from core.runtime import SHELL, GIT, python_tool
 from core.jury import triad_with_mediator
 from core.reflexion import lessons_for
 
 
 def _build_agents(model_override: str | None) -> Dict[str, Any]:
+    factory = get_factory()
+
     return {
-        "proponent": base_agent(
+        "proponent": factory.create_agent(
             "Code-Proponent",
             "Implement backlog items with tests and diff.",
-            tools=(GIT, python_tool(), SHELL),
-            model=model_override or "x-ai/grok-2-mini",
+            tools=[GIT, python_tool(), SHELL],
+            model_id=model_override or "x-ai/grok-2-mini",
         ),
-        "skeptic": base_agent(
+        "skeptic": factory.create_agent(
             "Code-Skeptic",
             "Identify bugs, perf and security issues in the diff.",
-            tools=(SHELL,),
-            model=model_override or "anthropic/claude-opus-4.1",
+            tools=[SHELL],
+            model_id=model_override or "anthropic/claude-opus-4.1",
         ),
-        "pragmatist": base_agent(
+        "pragmatist": factory.create_agent(
             "Code-Pragmatist",
             "Minimize surface area, enforce DX, ensure rollback path.",
-            tools=(GIT, SHELL),
-            model=model_override or "anthropic/claude-opus-4.1",
+            tools=[GIT, SHELL],
+            model_id=model_override or "anthropic/claude-opus-4.1",
         ),
-        "mediator": base_agent(
+        "mediator": factory.create_agent(
             "Code-Mediator",
             "Emit diff.patch plus metadata (commands_run, risk_notes).",
-            model=model_override or "anthropic/claude-opus-4.1",
+            model_id=model_override or "anthropic/claude-opus-4.1",
         ),
     }
 

@@ -2,7 +2,7 @@
 
 Tekton is PayReady’s builder-facing toolchain. It owns the Diamond v5 swarm,
 repository-aware automation, and the forthcoming UI for engineering visibility.
-SOPHIA remains the business intelligence dashboard; Tekton operates independently
+sophia remains the business intelligence dashboard; Tekton operates independently
 and exposes its own API and interface.
 
 ## Components
@@ -11,8 +11,7 @@ and exposes its own API and interface.
   stage ordering, and maps command-line options to runtime configuration (stage
   bounds, consensus-free, model overrides, output directories).
 - **Typer front door (`payready-cli`)** – routes single prompts to Claude, Codex,
-  or the Agno swarm and now exposes `diamond` so the staged workflow can be
-  launched without leaving the unified CLI.
+  or the Agno swarm while writing memory artifacts alongside the Diamond runner.
 - **Runtime (`tekton/swarm.py`)** – orchestrates Plan→Release stages, streams
 structured events, persists artifacts, and shares context between stages.
 - **Agents (`tekton/stages/*.py`)** – construct triads per stage, invoke the
@@ -42,13 +41,13 @@ Tekton’s UI arrives in two layers:
    - **Terminal TUI (Textual)** reusing the same API for headless environments,
      with progress columns, streaming transcripts, and artifact shortcuts.
 
-## Separation from SOPHIA
+## Separation from sophia
 
-- SOPHIA routes through `gateway/` and `orchestrator/`; it presents BI chat,
+- sophia routes through `gateway/` and `orchestrator/`; it presents BI chat,
   connector calls, and executive dashboards.
-- Tekton does **not** reuse SOPHIA’s API; it operates via the `payready` command
+- Tekton does **not** reuse sophia’s API; it operates via the `payready` command
   and its own REST service. Shared infrastructure (Redis, Neon, Milvus) is namespaced.
-- Documentation is split: SOPHIA docs live under `docs/sofia/`; Tekton docs live
+- Documentation is split: sophia docs live under `docs/sophia/`; Tekton docs live
   in `docs/tekton/`.
 
 ## Roadmap Highlights

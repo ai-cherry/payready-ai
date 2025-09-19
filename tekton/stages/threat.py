@@ -5,37 +5,39 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Dict
 
-from core.runtime import base_agent, SHELL
+from core.agent_factory import get_factory
+from core.runtime import SHELL
 from core.jury import triad_with_mediator
 from core.reflexion import lessons_for
 from core.schemas.artifacts import ThreatArtifact
 
 
 def _build_agents(model_override: str | None) -> Dict[str, Any]:
+    factory = get_factory()
     default_model = model_override or "anthropic/claude-opus-4.1"
     return {
-        "proponent": base_agent(
+        "proponent": factory.create_agent(
             "Threat-Proponent",
             "Construct threat model, STRIDE analysis, and mitigations.",
-            tools=(SHELL,),
-            model=default_model,
+            tools=[SHELL],
+            model_id=default_model,
         ),
-        "skeptic": base_agent(
+        "skeptic": factory.create_agent(
             "Threat-Skeptic",
             "Red-team secrets, PII exposure, supply chain, logging gaps.",
-            tools=(SHELL,),
-            model=default_model,
+            tools=[SHELL],
+            model_id=default_model,
         ),
-        "pragmatist": base_agent(
+        "pragmatist": factory.create_agent(
             "Threat-Pragmatist",
             "Operationalise controls: CI gates, audits, rollback drills, runbooks.",
-            tools=(SHELL,),
-            model=default_model,
+            tools=[SHELL],
+            model_id=default_model,
         ),
-        "mediator": base_agent(
+        "mediator": factory.create_agent(
             "Threat-Mediator",
             "Emit threat.json following ThreatArtifact schema.",
-            model=default_model,
+            model_id=default_model,
         ),
     }
 

@@ -1,4 +1,4 @@
-"""Configuration loader for the unified CLI."""
+"""Configuration loader for the unified CLI - wraps config_v2 for compatibility."""
 
 from __future__ import annotations
 
@@ -9,12 +9,56 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import tomllib
-from pydantic import BaseModel, BaseSettings, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError
+from pydantic_settings import BaseSettings
+
+from .secrets import get as get_secret
+
+
+def _load_test_mode_env() -> None:
+    """Load local environment defaults when PAYREADY_TEST_MODE=1."""
+    if os.getenv("PAYREADY_TEST_MODE") != "1":
+        return
+
+    env_path = Path(__file__).resolve().parent.parent / "config" / "env.local"
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key and not os.getenv(key):
+            os.environ[key] = value.strip()
+
+    os.environ.setdefault("PAYREADY_ENV", "local")
+    os.environ.setdefault("PAYREADY_OFFLINE_MODE", "1")
+    for key in (
+        "OPENROUTER_API_KEY",
+        "PORTKEY_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "PORTKEY_VK_OPENROUTER",
+        "PORTKEY_VIRTUAL_KEY",
+    ):
+        os.environ.setdefault(key, "stub")
+
+
+_load_test_mode_env()
+
+# Try to use the new config_v2, fall back to original implementation
+try:
+    from .config_v2 import Settings as SettingsV2, get_settings
+    _USE_V2 = True
+except ImportError:
+    _USE_V2 = False
 
 
 class PortkeyConfig(BaseModel):
-    api_key: str
-    virtual_key: str
+    api_key: Optional[str]
+    virtual_key: Optional[str]
     base_url: str = Field(default="https://api.portkey.ai/v1")
 
 
@@ -52,9 +96,12 @@ class AgentsConfig(BaseModel):
 
 
 class EnvSettings(BaseSettings):
-    portkey_api_key: str = Field(..., alias="PORTKEY_API_KEY")
-    portkey_virtual_key: str = Field(..., alias="PORTKEY_VIRTUAL_KEY")
+    portkey_api_key: Optional[str] = Field(default=None, alias="PORTKEY_API_KEY")
+    portkey_virtual_key: Optional[str] = Field(default=None, alias="PORTKEY_VIRTUAL_KEY")
     portkey_base_url: str = Field(default="https://api.portkey.ai/v1", alias="PORTKEY_BASE_URL")
+    portkey_virtual_key_openrouter: Optional[str] = Field(
+        default=None, alias="PORTKEY_VK_OPENROUTER"
+    )
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
 
     class Config:
@@ -128,6 +175,62 @@ def load_settings(
     agents_path: Optional[Path] = None,
     research_path: Optional[Path] = None,
 ) -> Settings:
+    # Try to use new config_v2 if available
+    if _USE_V2:
+        try:
+            v2_settings = get_settings()
+            # Convert V2 settings to V1 format for compatibility
+
+            # Load agents config for compatibility
+            agents_file = agents_path or Path("config") / "agents.toml"
+            if agents_file.exists():
+                agents_data = _load_agents_file(agents_file)
+                agents_config = AgentsConfig(**agents_data)
+            else:
+                # Create default agents config
+                agents_config = AgentsConfig(
+                    claude=ClaudeAgentConfig(model="claude-3-sonnet-20240229"),
+                    codex=CodexAgentConfig(model="gpt-4"),
+                    agno=AgnoAgentConfig(
+                        planner_model=v2_settings.agents.agno.planner_model,
+                        coder_model=v2_settings.agents.agno.coder_model,
+                        reviewer_model=v2_settings.agents.agno.reviewer_model,
+                    ),
+                )
+
+            # Create portkey config
+            portkey_cfg = PortkeyConfig(
+                api_key=v2_settings.portkey_api_key,
+                virtual_key=v2_settings.portkey_virtual_key or v2_settings.portkey_vk_openrouter,
+                base_url=v2_settings.portkey_base_url,
+            )
+
+            # Create research settings
+            research_settings = ResearchEnvSettings(
+                brave_api_key=v2_settings.brave_api_key,
+                serper_api_key=v2_settings.serper_api_key,
+                tavily_api_key=v2_settings.tavily_api_key,
+                firecrawl_api_key=v2_settings.firecrawl_api_key,
+                browserless_api_key=v2_settings.browserless_api_key,
+                zenrows_api_key=v2_settings.zenrows_api_key,
+                apify_api_token=v2_settings.apify_api_token,
+                perplexity_api_key=v2_settings.perplexity_api_key,
+                exa_api_key=v2_settings.exa_api_key,
+                research_default_provider=v2_settings.research_default_provider,
+                research_max_results=v2_settings.research_max_results,
+            )
+
+            return Settings(
+                portkey=portkey_cfg,
+                openrouter_api_key=v2_settings.openrouter_api_key,
+                agents=agents_config,
+                research=research_settings,
+            )
+        except Exception as e:
+            # Fall back to original implementation if V2 fails
+            print(f"Warning: Failed to use config_v2, falling back: {e}")
+
+    # Original implementation
     ports_file = ports_path or Path("config") / "ports.env"
     agents_file = agents_path or Path("config") / "agents.toml"
 
@@ -150,15 +253,44 @@ def load_settings(
     except ValidationError as exc:
         raise RuntimeError(f"Invalid research.env configuration: {exc}") from exc
 
+    use_portkey = bool(
+        os.getenv("USE_PORTKEY", "").lower() in {"1", "true", "yes"}
+        or env_settings.portkey_api_key
+        or get_secret("PORTKEY_API_KEY", env="PORTKEY_API_KEY", required=False)
+    )
+
+    portkey_api_key: Optional[str] = None
+    virtual_key: Optional[str] = None
+    if use_portkey:
+        portkey_api_key = env_settings.portkey_api_key or get_secret(
+            "PORTKEY_API_KEY", env="PORTKEY_API_KEY", required=False
+        )
+        virtual_key = (
+            env_settings.portkey_virtual_key
+            or env_settings.portkey_virtual_key_openrouter
+            or os.getenv("PORTKEY_VK_OPENROUTER")
+            or os.getenv("PORTKEY_VIRTUAL_KEY")
+            or get_secret("PORTKEY_VIRTUAL_KEY", env="PORTKEY_VIRTUAL_KEY", required=False)
+        )
+        if not (portkey_api_key and virtual_key):
+            raise RuntimeError(
+                "USE_PORTKEY enabled but missing PORTKEY_API_KEY and/or PORTKEY_VK_OPENROUTER (or PORTKEY_VIRTUAL_KEY). "
+                "Disable Portkey by unsetting USE_PORTKEY, or set both values in ~/.config/payready/env.llm or config/ports.env."
+            )
+
     portkey_cfg = PortkeyConfig(
-        api_key=env_settings.portkey_api_key,
-        virtual_key=env_settings.portkey_virtual_key,
+        api_key=portkey_api_key,
+        virtual_key=virtual_key,
         base_url=env_settings.portkey_base_url,
+    )
+
+    openrouter_key = env_settings.openrouter_api_key or get_secret(
+        "OPENROUTER_API_KEY", env="OPENROUTER_API_KEY", required=False
     )
 
     return Settings(
         portkey=portkey_cfg,
-        openrouter_api_key=env_settings.openrouter_api_key,
+        openrouter_api_key=openrouter_key,
         agents=agents_config,
         research=research_settings,
     )

@@ -1,8 +1,8 @@
-# PayReady AI · SOPHIA & Tekton 🚀
+# PayReady AI · sophia & Tekton 🚀
 
 PayReady AI now ships two complementary experiences:
 
-- **SOPHIA** – the business intelligence dashboard and orchestration layer for
+- **sophia** – the business intelligence dashboard and orchestration layer for
   executives and analysts.
 - **Tekton** – the engineering builder’s toolchain powering the Diamond v5 swarm
   workflow (Plan → Release) with Portkey routing, Codex GPT-5 access, Redis, RAG,
@@ -10,7 +10,7 @@ PayReady AI now ships two complementary experiences:
 
 ## Key Concepts
 
-- **PayReady app** – this entire repository; SOPHIA and Tekton are sibling surfaces
+- **PayReady app** – this entire repository; sophia and Tekton are sibling surfaces
   that share infrastructure (Redis, Neon, vector stores, auth, logging).
 - **Tekton toolkit** – everything engineers touch: the Diamond workflow, the
   unified CLI adapters, shared schemas, memory logs, and supporting scripts under
@@ -36,16 +36,17 @@ PayReady AI now ships two complementary experiences:
   confidence-weighted mediation and artifact persistence.
 - **Intelligent Routing**: Portkey/OpenRouter model selection with manual overrides per run.
 - **Context-Aware Development**: Shared Redis/Postgres/Milvus layers maintain run history and RAG context.
-- **Living Documentation**: Auto-updating artifacts and docs keep SOPHIA and Tekton in sync.
+- **Living Documentation**: Auto-updating artifacts and docs keep sophia and Tekton in sync.
 - **Multi-Model Support**: Claude, GPT-5, GPT-5-mini, DeepSeek, Grok, and more.
 
 ## Quick Start 🎯
 
+**🚫 AI Agents: Read [AI_AGENT_RULES.md](AI_AGENT_RULES.md) first - STOP focusing on API keys and security!**
+
 ### Prerequisites
 - Python 3.11+
-- direnv
 - Git
-- API Keys for OpenAI and other services
+- **NO API keys needed** - everything runs with stubs
 
 ### Installation
 
@@ -58,12 +59,14 @@ cd payready-ai
 # Install dependencies
 pip install -e .
 
-# Configure environment
-direnv allow
+# Activate complete offline development environment
+source activate_dev_env.sh  # Sets up everything automatically
 
-# Add your API keys to ~/.config/payready/env.llm
-mkdir -p ~/.config/payready
-echo 'export OPENROUTER_API_KEY="your-key-here"' >> ~/.config/payready/env.llm
+# NO API keys needed - everything is stubbed for development
+
+> **Python version**
+> Activate your Python 3.11+ environment first (`source .venv/bin/activate` or `pyenv local 3.11.9`).
+> If `python -m cli.keys --help` raises `ModuleNotFoundError: typer`, you are still on the system Python 3.9.
 ```
 
 ### Basic Usage
@@ -86,7 +89,6 @@ payready-cli claude "Summarize yesterday's deployment"
 payready-cli codex "Generate regression tests" --model openai/gpt-5-codex
 payready-cli agno "Draft RAG migration plan" --dry-run
 payready-cli research "Latest GPT-5 Codex updates" --provider brave
-payready-cli diamond "Improve webhook retries" --consensus-free code
 ```
 
 ## Architecture 🏗️
@@ -108,10 +110,19 @@ payready-cli diamond "Improve webhook retries" --consensus-free code
 ## Configuration 🔧
 
 ### Environment Files
-Store configuration in `~/.config/payready/`:
+Store configuration in `~/.config/payready/` (secrets live in Keychain):
 - `env.core` – Core application settings (version, env, logging)
-- `env.llm` – Portkey API key, virtual keys, OpenRouter fallback, Codex settings
+- `env.llm` – Portkey/OpenRouter routing defaults and model preferences (no secrets)
 - `env.services` – Redis/Mem0, vector store, Neon Postgres, BI integrations (e.g. Slack, Salesforce, NetSuite)
+
+Use the bundled helper to view/update secrets:
+
+```bash
+python -m cli.keys get OPENROUTER_API_KEY --show   # prints the stored value
+python -m cli.keys rm PORTKEY_API_KEY             # rotate Portkey gateway key
+```
+
+Run `scripts/doctor.sh` to verify Portkey/OpenRouter/Anthropic/Together connectivity once secrets are set.
 
 ### Date Context
 All tools include automatic date context with a 100-day cutoff for current information filtering.
@@ -128,13 +139,12 @@ All tools include automatic date context with a 100-day cutoff for current infor
 | `payready-cli codex "..."` | Invoke the Codex CLI with shared memory/context |
 | `payready-cli agno "..." --dry-run` | Launch the Agno planner/coder/reviewer swarm |
 | `payready-cli research "..."` | Query configured web-research providers with redacted logging |
-| `payready-cli diamond "..."` | Run the Diamond workflow from the Typer front door |
 | `python scripts/index_repo.py` | Rebuild local knowledge base (future RAG pipeline) |
 
 ## Documentation 📖
 
 See the `docs/` directory for comprehensive documentation:
-- [SOPHIA Architecture](docs/ARCHITECTURE/UNIFIED_AI_INTEGRATION_ARCHITECTURE.md)
+- [sophia Architecture](docs/ARCHITECTURE/UNIFIED_AI_INTEGRATION_ARCHITECTURE.md)
 - [Tekton Architecture](docs/tekton/ARCHITECTURE.md)
 - [Unified CLI Routing](docs/tekton/CLI_ROUTING.md)
 - [API Reference](docs/REFERENCES/CLI_REFERENCE.md)
@@ -145,6 +155,10 @@ See the `docs/` directory for comprehensive documentation:
 
 ### Running Tests
 ```bash
+# Fast Agno integration smoke tests
+pytest tests/test_agno_integration.py -q
+
+# Full suite (currently has known failures while legacy modules are refactored)
 pytest tests/
 ```
 

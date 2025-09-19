@@ -26,8 +26,6 @@ cp .env.example .env.local  # fill in keys
 payready tekton --goal "Improve webhook reliability"
 
 # Run via the Typer front door
-payready-cli diamond "Improve webhook reliability"
-
 # Inspect stage wiring without running
 payready tekton --goal "..." --explain
 

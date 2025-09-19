@@ -6,7 +6,7 @@ import json
 from json import JSONDecodeError
 from typing import Any, Dict, Optional, Sequence, Tuple, Type
 
-from agno import Agent
+from agno.agent import Agent
 from pydantic import BaseModel
 
 

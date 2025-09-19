@@ -14,6 +14,8 @@ installed.
   pip install -e .[dev]
   ```
 - Populate `config/ports.env` with Portkey/OpenRouter credentials.
+- Optional: copy `config/research.env.example` to `config/research.env` and
+  populate API keys for research providers (Brave, Serper, Tavily, Firecrawl, etc.).
 
 ## Bootstrapping tmux
 
@@ -51,7 +53,7 @@ Every executed command appends to `.project/memory/session-log.md` and
 payready-cli claude "Summarize yesterday's deployment"
 payready-cli codex "Refactor tekton runtime" --model openai/gpt-5-codex
 payready-cli agno "Draft RAG migration plan" --dry-run
-payready-cli diamond "Improve webhook reliability"
+payready-cli research "Latest GPT-5 Codex updates" --provider brave --count 5
 ```
 
 Use `payready tekton …` when you want the full staged Diamond workflow. The legacy

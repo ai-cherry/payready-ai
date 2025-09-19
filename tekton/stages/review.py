@@ -5,36 +5,38 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Dict
 
-from core.runtime import base_agent, SHELL, GIT
+from core.agent_factory import get_factory
+from core.runtime import SHELL, GIT
 from core.jury import triad_with_mediator
 from core.reflexion import lessons_for
 
 
 def _build_agents(model_override: str | None) -> Dict[str, Any]:
+    factory = get_factory()
     default_model = model_override or "anthropic/claude-opus-4.1"
     return {
-        "proponent": base_agent(
+        "proponent": factory.create_agent(
             "Review-Proponent",
             "Summarise diff impact and readiness for merge.",
-            tools=(GIT, SHELL),
-            model=default_model,
+            tools=[GIT, SHELL],
+            model_id=default_model,
         ),
-        "skeptic": base_agent(
+        "skeptic": factory.create_agent(
             "Review-Skeptic",
             "Log blocking issues, coverage gaps, regressions.",
-            tools=(GIT, SHELL),
-            model=default_model,
+            tools=[GIT, SHELL],
+            model_id=default_model,
         ),
-        "pragmatist": base_agent(
+        "pragmatist": factory.create_agent(
             "Review-Pragmatist",
             "Enumerate fixes or approvals with rollback clarity.",
-            tools=(GIT, SHELL),
-            model=default_model,
+            tools=[GIT, SHELL],
+            model_id=default_model,
         ),
-        "mediator": base_agent(
+        "mediator": factory.create_agent(
             "Review-Mediator",
             "Emit review.json with status, issues, fixlist, confidence.",
-            model=default_model,
+            model_id=default_model,
         ),
     }
 

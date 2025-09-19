@@ -5,37 +5,40 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Dict
 
-from core.runtime import base_agent, SHELL
+from core.agent_factory import get_factory
+from core.runtime import SHELL
 from core.jury import triad_with_mediator
 from core.reflexion import lessons_for
 from core.schemas.artifacts import BacklogArtifact
 
 
 def _build_agents(model_override: str | None) -> Dict[str, Any]:
+    factory = get_factory()
     default_model = model_override or "anthropic/claude-opus-4.1"
+
     return {
-        "proponent": base_agent(
+        "proponent": factory.create_agent(
             "Update-Proponent",
             "Translate plan + research into backlog items.",
-            tools=(SHELL,),
-            model=default_model,
+            tools=[SHELL],
+            model_id=default_model,
         ),
-        "skeptic": base_agent(
+        "skeptic": factory.create_agent(
             "Update-Skeptic",
             "Catch missing dependencies and unrealistic slices.",
-            tools=(SHELL,),
-            model=default_model,
+            tools=[SHELL],
+            model_id=default_model,
         ),
-        "pragmatist": base_agent(
+        "pragmatist": factory.create_agent(
             "Update-Pragmatist",
             "Ensure tasks are reversible, owner-assigned, and testable.",
-            tools=(SHELL,),
-            model=default_model,
+            tools=[SHELL],
+            model_id=default_model,
         ),
-        "mediator": base_agent(
+        "mediator": factory.create_agent(
             "Update-Mediator",
             "Produce backlog.json compliant with BacklogArtifact schema.",
-            model=default_model,
+            model_id=default_model,
         ),
     }
 

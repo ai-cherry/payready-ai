@@ -5,38 +5,40 @@ from __future__ import annotations
 from textwrap import dedent
 from typing import Any, Dict
 
-from core.runtime import base_agent, SHELL, python_tool
+from core.agent_factory import get_factory
+from core.runtime import SHELL, python_tool
 from core.jury import triad_with_mediator
 from core.reflexion import lessons_for
 from core.schemas.artifacts import TestReport
 
 
 def _build_agents(model_override: str | None) -> Dict[str, Any]:
+    factory = get_factory()
     default_model = model_override or "anthropic/claude-opus-4.1"
     py_tool = python_tool()
     return {
-        "proponent": base_agent(
+        "proponent": factory.create_agent(
             "Test-Proponent",
             "Execute regression tests, capture coverage, log failures.",
-            tools=(py_tool, SHELL),
-            model=default_model,
+            tools=[py_tool, SHELL],
+            model_id=default_model,
         ),
-        "skeptic": base_agent(
+        "skeptic": factory.create_agent(
             "Test-Skeptic",
             "Hunt flaky tests, performance regressions, missing assertions.",
-            tools=(py_tool, SHELL),
-            model=default_model,
+            tools=[py_tool, SHELL],
+            model_id=default_model,
         ),
-        "pragmatist": base_agent(
+        "pragmatist": factory.create_agent(
             "Test-Pragmatist",
             "Summarise ship/no-ship decision with triage plan.",
-            tools=(py_tool, SHELL),
-            model=default_model,
+            tools=[py_tool, SHELL],
+            model_id=default_model,
         ),
-        "mediator": base_agent(
+        "mediator": factory.create_agent(
             "Test-Mediator",
             "Emit test_report.json (ship, junit_path, coverage, flakes, confidence).",
-            model=default_model,
+            model_id=default_model,
         ),
     }
 

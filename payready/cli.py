@@ -1,4 +1,4 @@
-"""Top-level PayReady command dispatch for SOPHIA and Tekton tooling."""
+"""Top-level PayReady command dispatch for sophia and Tekton tooling."""
 
 from __future__ import annotations
 

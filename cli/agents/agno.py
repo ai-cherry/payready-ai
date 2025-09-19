@@ -1,8 +1,10 @@
-"""Agno swarm adapter coordinating planner, coder, and reviewer agents."""
+"""Agno team adapter coordinating planner, coder, and reviewer agents using real Agno v2.0.7."""
 
 from __future__ import annotations
 
 import json
+import asyncio
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
@@ -12,7 +14,21 @@ import typer
 from ._io import append_jsonl, append_text, new_run_dir
 from .metadata import collect_repo_state, provider_metadata, redact_payload, redact_text
 from .result import AgentResult
-from ..config import Settings
+
+# Use new config and factory
+try:
+    from ..config_v2 import Settings, get_settings
+except ImportError:
+    from ..config import Settings
+    def get_settings():
+        return Settings()
+
+try:
+    from ...core.agent_factory import AgentFactory, get_factory
+except ImportError:
+    AgentFactory = None
+    def get_factory(settings=None):
+        return None
 
 SESSION_SECTION_TEMPLATE = """### {timestamp} · Agno Swarm
 
@@ -69,33 +85,61 @@ def _extract_list(payload: Any, keys: Iterable[str]) -> list[str]:
 
 
 def _create_agents(settings: Settings, model_override: Optional[str]):
-    try:
-        from agno import Agent
-    except ImportError as exc:  # pragma: no cover - dependency missing in some envs
-        raise ImportError("Agno package not installed") from exc
+    """Create agents using the factory pattern with real Agno v2.0.7."""
 
-    llm_overrides = {}
-    if model_override:
-        llm_overrides = {"model": model_override}
+    # Try to use the new factory
+    if AgentFactory:
+        factory = get_factory(settings)
+        if factory:
+            api_key = settings.get_active_api_key() if hasattr(settings, 'get_active_api_key') else None
+            if not api_key:
+                api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-    def _agent(name: str, role: str, model: str) -> Any:
-        kwargs = {
-            "name": name,
-            "role": role,
-            "llm": {
-                "api_key_env": "PORTKEY_API_KEY",
-                "base_url_env": "OPENAI_BASE_URL",
-                "model": model,
-            },
-            "markdown": True,
-        }
-        kwargs["llm"].update(llm_overrides)
-        return Agent(**kwargs)
+            planner = factory.create_planner(api_key)
+            coder = factory.create_coder(api_key)
+            reviewer = factory.create_reviewer(api_key)
+            return planner, coder, reviewer
 
-    agno_cfg = settings.agents.agno
-    planner = _agent("Planner", "Break the task into executable steps.", agno_cfg.planner_model)
-    coder = _agent("Coder", "Implement the plan and produce artifacts.", agno_cfg.coder_model)
-    reviewer = _agent("Reviewer", "Review outputs for correctness and risk.", agno_cfg.reviewer_model)
+    # Fallback to direct creation
+    from agno.agent import Agent
+    from agno.models.openai import OpenAIChat
+
+    api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("No API key available")
+
+    agno_cfg = getattr(settings.agents, 'agno', None) if hasattr(settings, 'agents') else None
+    if not agno_cfg:
+        # Use defaults
+        planner_model = "openai/gpt-4o-mini"
+        coder_model = "openai/gpt-4o-mini"
+        reviewer_model = "openai/gpt-4o-mini"
+    else:
+        planner_model = model_override or agno_cfg.planner_model
+        coder_model = model_override or agno_cfg.coder_model
+        reviewer_model = model_override or agno_cfg.reviewer_model
+
+    def create_agent(name: str, role: str, model_id: str) -> Agent:
+        model = OpenAIChat(
+            id=model_id,
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1"
+        )
+        return Agent(
+            name=name,
+            role=role,
+            model=model,
+            instructions=[
+                f"You are {name}, a {role}",
+                "Provide clear, structured outputs",
+                "Use markdown formatting"
+            ],
+            markdown=True
+        )
+
+    planner = create_agent("planner", "strategic planner who breaks down tasks", planner_model)
+    coder = create_agent("coder", "expert programmer who implements solutions", coder_model)
+    reviewer = create_agent("reviewer", "code reviewer who ensures quality", reviewer_model)
     return planner, coder, reviewer
 
 
@@ -166,13 +210,14 @@ def run(
         )
         return AgentResult(output=redact_text(summary), metadata=metadata, run_dir=run_dir)
 
+    # Use real Agno Team API (Swarm doesn't exist in Agno v2.0.7)
     try:
-        from agno.swarm import Swarm
-    except ImportError as exc:  # pragma: no cover - dependency missing in some envs
+        from agno.team import Team
+    except ImportError as exc:
         metadata = {
             "agent": "agno",
             "success": False,
-            "error": "Agno swarm package not installed.",
+            "error": "Neither Agno package nor stub implementation available.",
         }
         metadata.update(collect_repo_state(memory_dir.parent))
         metadata_path.write_text(json.dumps(redact_payload(metadata), indent=2), encoding="utf-8")
@@ -239,10 +284,38 @@ def run(
             ),
         )
         raise typer.Exit(code=1) from exc
-    swarm = Swarm(planner=planner, worker=coder, reviewer=reviewer)
+    # Create team with real Agno v2.0.7 API
+    team = Team(members=[planner, coder, reviewer])
 
     try:
-        result = swarm.run(task=task, context=context_blob)
+        # Run team workflow asynchronously
+        async def run_team_workflow():
+            results = {}
+
+            # Planning phase
+            plan_prompt = f"Break down this task into clear implementation steps:\n{task}\n\nContext:\n{context_blob}"
+            plan_response = await planner.arun(plan_prompt)
+            results["plan"] = plan_response.content if hasattr(plan_response, 'content') else str(plan_response)
+
+            # Coding phase
+            code_prompt = f"Implement this based on the plan:\nTask: {task}\nPlan:\n{results['plan']}\n\nContext:\n{context_blob}"
+            code_response = await coder.arun(code_prompt)
+            results["code"] = code_response.content if hasattr(code_response, 'content') else str(code_response)
+
+            # Review phase
+            review_prompt = f"Review this implementation:\nTask: {task}\nCode:\n{results['code']}"
+            review_response = await reviewer.arun(review_prompt)
+            results["review"] = review_response.content if hasattr(review_response, 'content') else str(review_response)
+
+            return {
+                "success": True,
+                "summary": f"Completed task with Agno team workflow",
+                "decisions": [results["plan"][:200] + "..."],
+                "tests": [results["review"][:200] + "..."],
+                "results": results
+            }
+
+        result = asyncio.run(run_team_workflow())
     except Exception as exc:  # pragma: no cover - runtime safety
         metadata = {
             "agent": "agno",

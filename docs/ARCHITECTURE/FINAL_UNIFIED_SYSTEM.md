@@ -19,7 +19,7 @@ User → `ai` command → Smart Router → Execution Layer → Memory Storage
                            ↓
                     ┌──────────────────┐
                     │ Single Model Call │ → Direct to model
-                    │ Swarm Stage       │ → Platinum Triad + Sophia
+                    │ Swarm Stage       │ → Platinum Triad + sophia
                     │ Memory Query      │ → Mem0/Milvus
                     └──────────────────┘
 ```
@@ -31,7 +31,7 @@ User → `ai` command → Smart Router → Execution Layer → Memory Storage
 - Routes based on intent and complexity
 - NO OTHER CLI SCRIPTS
 
-**SOPHIA ORCHESTRATOR**
+**sophia ORCHESTRATOR**
 - Acts as the MEDIATOR for Platinum Swarm
 - Manages memory (Mem0) and RAG (Milvus)
 - Coordinates triad agents consensus
@@ -40,7 +40,7 @@ User → `ai` command → Smart Router → Execution Layer → Memory Storage
 **PLATINUM SWARM V3**
 - Provides the TRIAD AGENTS (Proponent/Skeptic/Neutral)
 - Executes complex multi-stage workflows
-- Uses Sophia as its mediator (not separate)
+- Uses sophia as its mediator (not separate)
 
 ### 3. Authentication Strategy (Simple)
 

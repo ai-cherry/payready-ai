@@ -56,7 +56,7 @@ async def run_integrate(
     prompt = dedent(
         f"""
         Goal: {goal}
-        Threat/compliance excerpt: {threat_snapshot[:800]}.
+        Threat/compliance excerpt: {str(threat_snapshot)[:800]}.
         Produce integration.json enumerating flags, migrations, config_map, rollback,
         confidence. Ensure rollout describes canary/blue-green and monitoring hooks.
         Reflexion hints:\n{hint_block}

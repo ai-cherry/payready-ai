@@ -60,8 +60,8 @@ async def run_plan_update(
         Goal: {goal}
         Build backlog.json with backlog items referencing plan + research outputs.
         Include at least: item_id, task, rationale, dependencies, owner (if known).
-        Use confidence to reflect backlog health. Plan excerpt: {plan_snapshot[:600]}.
-        Research excerpt: {research_snapshot[:600]}.
+        Use confidence to reflect backlog health. Plan excerpt: {str(plan_snapshot)[:600]}.
+        Research excerpt: {str(research_snapshot)[:600]}.
         Reflexion hints:\n{hint_block}
         """
     )

@@ -55,7 +55,7 @@ async def run_review(
     prompt = dedent(
         f"""
         Goal: {goal}
-        Evaluate diff + metadata: {diff_snapshot[:800]}.
+        Evaluate diff + metadata: {str(diff_snapshot)[:800]}.
         Produce review.json => status(ok|revise|block), issues[], fixlist[], risks[],
         confidence. Capture any dissent explicitly.
         Reflexion hints:\n{hint_block}

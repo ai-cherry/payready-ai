@@ -58,7 +58,7 @@ async def run_test_debug(
     prompt = dedent(
         f"""
         Goal: {goal}
-        Integration excerpt: {integrate_snapshot[:800]}.
+        Integration excerpt: {str(integrate_snapshot)[:800]}.
         Produce test_report.json capturing ship decision, junit_path, coverage{{pct, xml}},
         flakes[], confidence. Detail commands executed and diagnostics.
         Reflexion hints:\n{hint_block}

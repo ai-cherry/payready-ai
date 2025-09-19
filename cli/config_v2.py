@@ -33,11 +33,9 @@ def _load_test_mode_env() -> None:
     os.environ.setdefault("PAYREADY_OFFLINE_MODE", "1")
     for key in (
         "OPENROUTER_API_KEY",
-        "PORTKEY_API_KEY",
+        "AIMLAPI_API_KEY",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "PORTKEY_VK_OPENROUTER",
-        "PORTKEY_VIRTUAL_KEY",
     ):
         os.environ.setdefault(key, "stub")
 
@@ -55,17 +53,16 @@ def get_from_keyring(service: str, name: str) -> Optional[str]:
         return None
 
 
-class PortkeyConfig(BaseSettings):
-    """Portkey configuration with optional fields."""
+class AIMLAPIConfig(BaseSettings):
+    """AIMLAPI configuration with optional fields."""
     api_key: Optional[str] = Field(default=None)
-    virtual_key: Optional[str] = Field(default=None)
-    base_url: str = Field(default="https://api.portkey.ai/v1")
+    base_url: str = Field(default="https://api.aimlapi.com/v1")
 
     @field_validator("api_key", mode="before")
     def load_api_key(cls, v):
         if not v:
             # Try keyring
-            v = get_from_keyring("payready", "PORTKEY_API_KEY")
+            v = get_from_keyring("payready", "AIMLAPI_API_KEY")
         return v
 
 
@@ -102,11 +99,9 @@ class Settings(BaseSettings):
     """Main settings with all fields optional and proper defaults."""
 
     # API Keys - all optional
-    portkey_api_key: Optional[str] = Field(default=None, env="PORTKEY_API_KEY")
-    portkey_virtual_key: Optional[str] = Field(default=None, env="PORTKEY_VIRTUAL_KEY")
-    portkey_vk_openrouter: Optional[str] = Field(default=None, env="PORTKEY_VK_OPENROUTER")
-    portkey_base_url: str = Field(default="https://api.portkey.ai/v1", env="PORTKEY_BASE_URL")
     openrouter_api_key: Optional[str] = Field(default=None, env="OPENROUTER_API_KEY")
+    aimlapi_api_key: Optional[str] = Field(default=None, env="AIMLAPI_API_KEY")
+    aimlapi_base_url: str = Field(default="https://api.aimlapi.com/v1", env="AIMLAPI_BASE_URL")
     anthropic_api_key: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     deepseek_api_key: Optional[str] = Field(default=None, env="DEEPSEEK_API_KEY")
@@ -132,13 +127,12 @@ class Settings(BaseSettings):
     mem0_api_key: Optional[str] = Field(default=None, env="MEM0_API_KEY")
 
     # Feature flags
-    use_portkey: bool = Field(default=False, env="USE_PORTKEY")
     use_memory: bool = Field(default=True, env="USE_MEMORY")
     use_cache: bool = Field(default=True, env="USE_CACHE")
     debug_mode: bool = Field(default=False, env="AI_DEBUG")
 
     # Complex configs with factory defaults
-    portkey: PortkeyConfig = Field(default_factory=PortkeyConfig)
+    aimlapi: AIMLAPIConfig = Field(default_factory=AIMLAPIConfig)
     agents: AgentConfigs = Field(default_factory=AgentConfigs)
     research: ResearchConfig = Field(default_factory=ResearchConfig)
 
@@ -165,20 +159,20 @@ class Settings(BaseSettings):
             v = os.getenv("OPENROUTER_API_KEY")
         return v
 
-    @field_validator("portkey_api_key", mode="before")
-    def load_portkey_key(cls, v):
-        """Try multiple sources for Portkey key."""
+    @field_validator("aimlapi_api_key", mode="before")
+    def load_aimlapi_key(cls, v):
+        """Try multiple sources for AIMLAPI key."""
         if not v:
-            v = get_from_keyring("payready", "PORTKEY_API_KEY")
+            v = get_from_keyring("payready", "AIMLAPI_API_KEY")
         if not v:
-            v = os.getenv("PORTKEY_API_KEY")
+            v = os.getenv("AIMLAPI_API_KEY")
         return v
 
-    @field_validator("openrouter_api_key", "portkey_api_key", "anthropic_api_key", "openai_api_key", "deepseek_api_key", "groq_api_key", mode="after")
+    @field_validator("openrouter_api_key", "aimlapi_api_key", "anthropic_api_key", "openai_api_key", "deepseek_api_key", "groq_api_key", mode="after")
     def validate_api_key_format(cls, v):
         """Warn if API key format looks suspicious."""
         if v and not any(str(v).startswith(prefix) for prefix in [
-            'sk-', 'sk-ant-', 'sk-or-', 'pk-', 'vk-', 'gsk_']):
+            'sk-', 'sk-ant-', 'sk-or-', 'gsk_']):
             import warnings
             warnings.warn(f"API key may have invalid format: {str(v)[:8]}...", stacklevel=2)
         return v
@@ -191,7 +185,7 @@ class Settings(BaseSettings):
             
         keys = [
             (self.openrouter_api_key, "OpenRouter"),
-            (self.portkey_api_key, "Portkey"),
+            (self.aimlapi_api_key, "AIMLAPI"),
             (self.anthropic_api_key, "Anthropic"),
             (self.openai_api_key, "OpenAI"),
             (self.deepseek_api_key, "DeepSeek"),

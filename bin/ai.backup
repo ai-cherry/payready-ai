@@ -85,17 +85,19 @@ load_local_env() {
         debug "PAYREADY_TEST_MODE=1 detected - loading $local_env_file"
 
         local pre_openrouter="${OPENROUTER_API_KEY-__unset__}"
-        local pre_aimlapi="${AIMLAPI_KEY-__unset__}"
+        local pre_portkey="${PORTKEY_API_KEY-__unset__}"
         local pre_anthropic="${ANTHROPIC_API_KEY-__unset__}"
         local pre_openai="${OPENAI_API_KEY-__unset__}"
+        local pre_vk="${PORTKEY_VK_OPENROUTER-__unset__}"
+        local pre_virtual="${PORTKEY_VIRTUAL_KEY-__unset__}"
 
         load_env_file "$local_env_file"
 
         if [[ "$pre_openrouter" != "__unset__" && -n "$pre_openrouter" ]]; then
             export OPENROUTER_API_KEY="$pre_openrouter"
         fi
-        if [[ "$pre_aimlapi" != "__unset__" && -n "$pre_aimlapi" ]]; then
-            export AIMLAPI_KEY="$pre_aimlapi"
+        if [[ "$pre_portkey" != "__unset__" && -n "$pre_portkey" ]]; then
+            export PORTKEY_API_KEY="$pre_portkey"
         fi
         if [[ "$pre_anthropic" != "__unset__" && -n "$pre_anthropic" ]]; then
             export ANTHROPIC_API_KEY="$pre_anthropic"
@@ -103,14 +105,20 @@ load_local_env() {
         if [[ "$pre_openai" != "__unset__" && -n "$pre_openai" ]]; then
             export OPENAI_API_KEY="$pre_openai"
         fi
+        if [[ "$pre_vk" != "__unset__" && -n "$pre_vk" ]]; then
+            export PORTKEY_VK_OPENROUTER="$pre_vk"
+        fi
+        if [[ "$pre_virtual" != "__unset__" && -n "$pre_virtual" ]]; then
+            export PORTKEY_VIRTUAL_KEY="$pre_virtual"
+        fi
 
         export PAYREADY_ENV="local"
         export PAYREADY_OFFLINE_MODE="${PAYREADY_OFFLINE_MODE:-1}"
-        #  removed - using direct OpenRouter/AIMLAPI
+        export USE_PORTKEY="${USE_PORTKEY:-0}"
         export USE_MEMORY="${USE_MEMORY:-0}"
         export USE_CACHE="${USE_CACHE:-0}"
 
-        for key in OPENROUTER_API_KEY AIMLAPI_KEY ANTHROPIC_API_KEY OPENAI_API_KEY; do
+        for key in OPENROUTER_API_KEY PORTKEY_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY PORTKEY_VK_OPENROUTER PORTKEY_VIRTUAL_KEY; do
             if [[ -z "${!key:-}" ]]; then
                 export "$key"="stub"
             fi
@@ -147,10 +155,10 @@ for env_file in "$CONFIG_DIR"/env.*; do
 done
 set +a
 
-if [[ -z "${AIMLAPI_KEY:-}" ]]; then
-    fetched_secret=$(get_secret AIMLAPI_KEY || true)
+if [[ -z "${PORTKEY_API_KEY:-}" ]]; then
+    fetched_secret=$(get_secret PORTKEY_API_KEY || true)
     if [[ -n "$fetched_secret" ]]; then
-        export AIMLAPI_KEY="$fetched_secret"
+        export PORTKEY_API_KEY="$fetched_secret"
     fi
 fi
 
@@ -193,7 +201,7 @@ validate_environment() {
     local valid_key=""
 
     # Check for valid keys
-    for k in "${AIMLAPI_KEY:-}" "${OPENROUTER_API_KEY:-}" "${OPENAI_API_KEY:-}" "${ANTHROPIC_API_KEY:-}"; do
+    for k in "${PORTKEY_API_KEY:-}" "${OPENROUTER_API_KEY:-}" "${OPENAI_API_KEY:-}" "${ANTHROPIC_API_KEY:-}"; do
         if [[ -n "$k" ]] && validate_api_key_format "$k"; then
             has_valid_key=true
             valid_key="$k"
@@ -202,28 +210,34 @@ validate_environment() {
     done
 
     if [[ "$has_valid_key" == "false" ]]; then
-        error "No valid API key found.\n\nTo configure, run:\n  ai config setup\nOr use:\n  keyring set payready OPENROUTER_API_KEY <your-key>\n  keyring set payready AIMLAPI_KEY <your-key>\nSee: https://payready.ai/docs/GUIDES/SETUP_GUIDE.md"
+        error "No valid API key found.\n\nTo configure, run:\n  ai config setup\nOr use:\n  keyring set payready OPENROUTER_API_KEY <your-key>\n  keyring set payready PORTKEY_API_KEY <your-key>\nSee: https://payready.ai/docs/GUIDES/SETUP_GUIDE.md"
     fi
 
-    if [[ -n "${AIMLAPI_KEY:-}" ]]; then
+    if [[ -n "${PORTKEY_API_KEY:-}" ]]; then
         has_valid_key=true
     fi
 
     if [[ -n "${OPENROUTER_API_KEY:-}" ]] && [[ "${OPENROUTER_API_KEY}" != *"YOUR_KEY"* ]]; then
         has_valid_key=true
-    elif [[ -z "${AIMLAPI_KEY:-}" ]]; then
+    elif [[ -z "${PORTKEY_API_KEY:-}" ]]; then
         warnings+=("OPENROUTER_API_KEY not configured - fallback routing disabled")
     fi
 
     if [[ "$has_valid_key" == "false" ]]; then
-        error "At least one valid API key required: AIMLAPI_KEY or OPENROUTER_API_KEY"
+        error "At least one valid API key required: PORTKEY_API_KEY or OPENROUTER_API_KEY"
     fi
 
-    if [[ -z "${AIMLAPI_KEY:-}" ]]; then
-        warnings+=("AIMLAPI_KEY not configured - using OpenRouter only")
+    if [[ -z "${PORTKEY_API_KEY:-}" ]]; then
+        warnings+=("PORTKEY_API_KEY not configured - using OpenRouter only")
     fi
 
-    # Virtual keys removed - no longer needed
+    local use_portkey="${USE_PORTKEY:-}"
+    use_portkey=$(printf '%s' "$use_portkey" | tr '[:upper:]' '[:lower:]')
+    if [[ "$use_portkey" =~ ^(1|true|yes)$ ]]; then
+        if [[ -z "${PORTKEY_VK_OPENROUTER:-}" && -z "${PORTKEY_VIRTUAL_KEY:-}" ]]; then
+            warnings+=("USE_PORTKEY enabled but no virtual key configured (PORTKEY_VK_OPENROUTER / PORTKEY_VIRTUAL_KEY)")
+        fi
+    fi
 
     if (( ${#warnings[@]} )); then
         for warning in "${warnings[@]}"; do
@@ -237,13 +251,38 @@ validate_environment() {
 # ============================================================================
 
 get_auth_method() {
-    # All models now use OpenRouter/AIMLAPI routing
-    echo "openrouter"
+    # All models now use Portkey/OpenRouter routing
+    echo "portkey"
 }
 
 get_virtual_key() {
-    # Virtual keys removed - no longer needed
-    echo "none"
+    local intent="$1"
+
+    # Return appropriate virtual key based on intent
+    # Updated Sept 2025 with optimal provider mapping
+    case "$intent" in
+        code)
+            echo "${PORTKEY_VK_OPENROUTER:-openrouter-vk}"
+            ;;
+        analyze)
+            echo "${PORTKEY_VK_OPENROUTER:-openrouter-vk}"
+            ;;
+        design)
+            echo "${PORTKEY_VK_OPENROUTER:-openrouter-vk}"
+            ;;
+        search)
+            echo "${PORTKEY_VK_OPENROUTER:-openrouter-vk}"
+            ;;
+        fast)
+            echo "${PORTKEY_VK_OPENROUTER:-openrouter-vk}"
+            ;;
+        deep)
+            echo "${PORTKEY_VK_OPENROUTER:-openrouter-vk}"
+            ;;
+        *)
+            echo "${PORTKEY_VK_OPENROUTER:-openrouter-vk}"
+            ;;
+    esac
 }
 
 # ============================================================================
@@ -336,7 +375,7 @@ first_model() {
 # ============================================================================
 
 
-execute_openrouter() {
+execute_portkey() {
     local query="$1"
     local vk="$2"
     shift 2
@@ -357,46 +396,57 @@ execute_openrouter() {
 EOF
 )
 
-    local openrouter_url="https://openrouter.ai/api/v1/chat/completions"
+    local trace_id="${PAYREADY_TRACE_ID:-pr-$(uuidgen 2>/dev/null || date +%s)}"
+    local portkey_config_default='{"retry":{"attempts":3,"on_status_codes":[408,429,500,502,503,504]}}'
+    local portkey_config="${PORTKEY_CONFIG_JSON:-$portkey_config_default}"
+    local portkey_timeout="${PORTKEY_REQUEST_TIMEOUT_MS:-8000}"
+    local portkey_url="${PORTKEY_BASE_URL:-https://api.portkey.ai/v1}/chat/completions"
     local bypass_gateway="${PAYREADY_BYPASS_GATEWAY:-0}"
 
-    if [[ "$bypass_gateway" != "1" && -n "${OPENROUTER_API_KEY:-}" ]]; then
-        # OpenRouter doesn't need these headers
+    if [[ "$bypass_gateway" != "1" && -n "${PORTKEY_API_KEY:-}" ]]; then
+        local config_header trace_header timeout_header provider_header
+        printf -v config_header 'x-portkey-config: %s' "$portkey_config"
+        printf -v trace_header 'x-portkey-trace-id: %s' "$trace_id"
+        printf -v timeout_header 'x-portkey-request-timeout: %s' "$portkey_timeout"
+        provider_header='x-portkey-provider: openrouter'
 
         for model in "${models[@]}"; do
             [[ -z "$model" ]] && continue
             local request_body
             request_body=$(jq --arg model "$model" '.model = $model' <<<"$base_body")
-            log "Using $model via OpenRouter..."
+            log "Using $model via Portkey..."
             local body_file
             body_file=$(mktemp)
             set +e
-            local openrouter_status
-            openrouter_status=$(curl -sS --fail-with-body \
+            local portkey_status
+            portkey_status=$(curl -sS --fail-with-body \
                 -o "$body_file" \
                 -w '%{http_code}' \
-                "$openrouter_url" \
+                "$portkey_url" \
                 -H "content-type: application/json" \
-                -H "Authorization: Bearer ${OPENROUTER_API_KEY}" \
-                -H "HTTP-Referer: https://payready.ai" \
-                -H "X-Title: PayReady AI" \
+                -H "x-portkey-api-key: ${PORTKEY_API_KEY}" \
+                -H "x-portkey-virtual-key: ${vk}" \
+                -H "$provider_header" \
+                -H "$timeout_header" \
+                -H "$trace_header" \
+                -H "$config_header" \
                 -d "$request_body")
             local curl_exit=$?
             set -e
 
-            if [[ $curl_exit -eq 0 && ${openrouter_status:-0} -lt 400 ]]; then
+            if [[ $curl_exit -eq 0 && ${portkey_status:-0} -lt 400 ]]; then
                 local response
                 response=$(cat "$body_file")
                 rm -f "$body_file"
-                log_event "{\"ts\":\"$(date -Iseconds 2>/dev/null || date)\",\"event\":\"llm_request\",\"provider\":\"openrouter\",\"model\":\"$model\",\"http_status\":${openrouter_status}}"
-                [[ "${AI_DEBUG:-false}" == "true" ]] && echo "OpenRouter response: ${response:0:200}..." >&2
+                log_event "{\"ts\":\"$(date -Iseconds 2>/dev/null || date)\",\"event\":\"llm_request\",\"provider\":\"portkey\",\"model\":\"$model\",\"http_status\":${portkey_status},\"trace_id\":\"$trace_id\"}"
+                [[ "${AI_DEBUG:-false}" == "true" ]] && echo "Portkey response: ${response:0:200}..." >&2
                 echo "$response" | jq -r '.choices[0].message.content // .error.message // "Error: Invalid response"' 2>/dev/null || echo "Error: Failed to parse response"
                 return 0
             fi
 
-            debug "OpenRouter call failed (exit=${curl_exit}, status=${openrouter_status:-n/a})"
+            debug "Portkey call failed (exit=${curl_exit}, status=${portkey_status:-n/a})"
             if [[ -s "$body_file" ]]; then
-                debug "OpenRouter body: $(head -c 200 "$body_file")"
+                debug "Portkey body: $(head -c 200 "$body_file")"
             fi
             rm -f "$body_file"
         done
@@ -546,14 +596,14 @@ main() {
         return 0
     fi
 
-    # Execute via OpenRouter/AIMLAPI
+    # Execute via Portkey/OpenRouter
     local vk
     vk=$(get_virtual_key "$intent")
     debug "Virtual key: $vk"
 
     local response
-    if ! response=$(execute_openrouter "$context_query" "$vk" "${models[@]}"); then
-        error "LLM request failed. Check OpenRouter/AIMLAPI credentials or service status."
+    if ! response=$(execute_portkey "$context_query" "$vk" "${models[@]}"); then
+        error "LLM request failed. Check Portkey/OpenRouter credentials or service status."
     fi
 
     echo "$response"
@@ -622,7 +672,7 @@ handle_config() {
     case "$action" in
         list)
             echo "Current Configuration:"
-            echo "  AIMLAPI_KEY: ${AIMLAPI_KEY:0:10}..."
+            echo "  PORTKEY_API_KEY: ${PORTKEY_API_KEY:0:10}..."
             echo "  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:0:10}..."
             echo "  Default Model: $(first_model 'general')"
             echo "  Debug Mode: ${AI_DEBUG:-false}"
@@ -641,10 +691,10 @@ handle_config() {
                 python3 -c "import keyring; keyring.set_password('payready', 'OPENROUTER_API_KEY', '$or_key')"
                 log "✓ OpenRouter key saved to keyring"
             fi
-            read -p "Enter AIMLAPI API key (or press Enter to skip): " pk_key
+            read -p "Enter Portkey API key (or press Enter to skip): " pk_key
             if [[ -n "$pk_key" ]]; then
-                python3 -c "import keyring; keyring.set_password('payready', 'AIMLAPI_KEY', '$pk_key')"
-                log "✓ AIMLAPI key saved to keyring"
+                python3 -c "import keyring; keyring.set_password('payready', 'PORTKEY_API_KEY', '$pk_key')"
+                log "✓ Portkey key saved to keyring"
             fi
             read -p "Configure additional providers? (y/N): " more_keys
             if [[ "$more_keys" =~ ^[Yy]$ ]]; then
@@ -673,7 +723,7 @@ handle_auth() {
     case "$action" in
         status)
             echo "Authentication Status:"
-            echo "  AIMLAPI: $([ -n "${AIMLAPI_KEY:-}" ] && echo "Configured" || echo "Not configured")"
+            echo "  Portkey: $([ -n "${PORTKEY_API_KEY:-}" ] && echo "Configured" || echo "Not configured")"
             echo "  GPT-5 (ChatGPT): $([ -f ~/.codex/auth.json ] && echo "Logged in" || echo "Not logged in")"
             ;;
         login)
@@ -799,10 +849,10 @@ run_tests() {
         return 0
     fi
 
-    # Test AIMLAPI
-    echo -n "Testing OpenRouter connection... "
-    if curl -s -I https://openrouter.ai/api/v1/models \
-        -H "x-aimlapi-api-key: ${AIMLAPI_KEY}" | grep -q "200"; then
+    # Test Portkey
+    echo -n "Testing Portkey connection... "
+    if curl -s -I https://api.portkey.ai/v1/models \
+        -H "x-portkey-api-key: ${PORTKEY_API_KEY}" | grep -q "200"; then
         echo -e "${GREEN}✓${NC}"
     else
         echo -e "${RED}✗${NC}"
@@ -814,7 +864,7 @@ run_tests() {
         local vk=$(get_virtual_key "$intent")
         echo -n "Testing $model... "
         local out
-        if out=$(execute_aimlapi "Say 'OK'" "$vk" "$model" 2>/dev/null) && grep -qi "ok" <<<"$out"; then
+        if out=$(execute_portkey "Say 'OK'" "$vk" "$model" 2>/dev/null) && grep -qi "ok" <<<"$out"; then
             echo -e "${GREEN}✓${NC}"
         else
             echo -e "${RED}✗${NC}"
@@ -825,13 +875,13 @@ run_tests() {
 run_doctor() {
     local intents=(code analyze design search fast deep general)
 
-    if [[ -n "${AIMLAPI_KEY:-}" ]]; then
-        echo "AIMLAPI Virtual Key checks:"
+    if [[ -n "${PORTKEY_API_KEY:-}" ]]; then
+        echo "Portkey Virtual Key checks:"
         for intent in "${intents[@]}"; do
             echo -n "  $intent → verifying... "
             local vk=$(get_virtual_key "$intent")
             local out
-            out=$(execute_aimlapi "doctor ping" "$vk" $(select_models "$intent")) 2>&1
+            out=$(execute_portkey "doctor ping" "$vk" $(select_models "$intent")) 2>&1
             local rc=$?
             if [[ $rc -eq 0 ]]; then
                 echo -e "${GREEN}✓${NC}"
@@ -841,7 +891,7 @@ run_doctor() {
             fi
         done
     else
-        echo -e "${YELLOW}!${NC} AIMLAPI_KEY not set; skipping AIMLAPI checks."
+        echo -e "${YELLOW}!${NC} PORTKEY_API_KEY not set; skipping Portkey checks."
     fi
 
     if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
@@ -897,7 +947,7 @@ ${YELLOW}Commands:${NC}
     auth status          Show auth status
     auth login           Login to ChatGPT (for GPT-5)
     test                 Run system tests
-    doctor               Validate AIMLAPI/OpenRouter connectivity
+    doctor               Validate Portkey/OpenRouter connectivity
     remember KEY VAL     Store information in memory
     recall QUERY         Search memory for information
     memory context       Show current memory context
@@ -907,7 +957,7 @@ ${YELLOW}Examples:${NC}
     ai --model opus "analyze this codebase"
     ai --verbose "design a microservices architecture"
 
-${YELLOW}Models (via AIMLAPI/OpenRouter):${NC}
+${YELLOW}Models (via Portkey/OpenRouter):${NC}
     x-ai/grok-code-fast-1           Grok Code Fast
     google/gemini-2.5-flash         Gemini 2.5 Flash
     google/gemini-2.5-pro          Gemini 2.5 Pro

@@ -37,11 +37,9 @@ def _load_test_mode_env() -> None:
     os.environ.setdefault("PAYREADY_OFFLINE_MODE", "1")
     for key in (
         "OPENROUTER_API_KEY",
-        "PORTKEY_API_KEY",
+        "AIMLAPI_API_KEY",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "PORTKEY_VK_OPENROUTER",
-        "PORTKEY_VIRTUAL_KEY",
     ):
         os.environ.setdefault(key, "stub")
 
@@ -54,12 +52,6 @@ try:
     _USE_V2 = True
 except ImportError:
     _USE_V2 = False
-
-
-class PortkeyConfig(BaseModel):
-    api_key: Optional[str]
-    virtual_key: Optional[str]
-    base_url: str = Field(default="https://api.portkey.ai/v1")
 
 
 class ClaudeAgentConfig(BaseModel):
@@ -96,13 +88,9 @@ class AgentsConfig(BaseModel):
 
 
 class EnvSettings(BaseSettings):
-    portkey_api_key: Optional[str] = Field(default=None, alias="PORTKEY_API_KEY")
-    portkey_virtual_key: Optional[str] = Field(default=None, alias="PORTKEY_VIRTUAL_KEY")
-    portkey_base_url: str = Field(default="https://api.portkey.ai/v1", alias="PORTKEY_BASE_URL")
-    portkey_virtual_key_openrouter: Optional[str] = Field(
-        default=None, alias="PORTKEY_VK_OPENROUTER"
-    )
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
+    aimlapi_api_key: Optional[str] = Field(default=None, alias="AIMLAPI_API_KEY")
+    aimlapi_base_url: str = Field(default="https://api.aimlapi.com/v1", alias="AIMLAPI_BASE_URL")
 
     class Config:
         extra = "allow"
@@ -128,8 +116,9 @@ class ResearchEnvSettings(BaseSettings):
 
 
 class Settings(BaseModel):
-    portkey: PortkeyConfig
     openrouter_api_key: Optional[str]
+    aimlapi_api_key: Optional[str]
+    aimlapi_base_url: str
     agents: AgentsConfig
     logging_config: Path = Path("config/logging.toml")
     research: ResearchEnvSettings
@@ -198,13 +187,6 @@ def load_settings(
                     ),
                 )
 
-            # Create portkey config
-            portkey_cfg = PortkeyConfig(
-                api_key=v2_settings.portkey_api_key,
-                virtual_key=v2_settings.portkey_virtual_key or v2_settings.portkey_vk_openrouter,
-                base_url=v2_settings.portkey_base_url,
-            )
-
             # Create research settings
             research_settings = ResearchEnvSettings(
                 brave_api_key=v2_settings.brave_api_key,
@@ -221,8 +203,9 @@ def load_settings(
             )
 
             return Settings(
-                portkey=portkey_cfg,
                 openrouter_api_key=v2_settings.openrouter_api_key,
+                aimlapi_api_key=v2_settings.aimlapi_api_key,
+                aimlapi_base_url=v2_settings.aimlapi_base_url,
                 agents=agents_config,
                 research=research_settings,
             )
@@ -253,44 +236,20 @@ def load_settings(
     except ValidationError as exc:
         raise RuntimeError(f"Invalid research.env configuration: {exc}") from exc
 
-    use_portkey = bool(
-        os.getenv("USE_PORTKEY", "").lower() in {"1", "true", "yes"}
-        or env_settings.portkey_api_key
-        or get_secret("PORTKEY_API_KEY", env="PORTKEY_API_KEY", required=False)
-    )
-
-    portkey_api_key: Optional[str] = None
-    virtual_key: Optional[str] = None
-    if use_portkey:
-        portkey_api_key = env_settings.portkey_api_key or get_secret(
-            "PORTKEY_API_KEY", env="PORTKEY_API_KEY", required=False
-        )
-        virtual_key = (
-            env_settings.portkey_virtual_key
-            or env_settings.portkey_virtual_key_openrouter
-            or os.getenv("PORTKEY_VK_OPENROUTER")
-            or os.getenv("PORTKEY_VIRTUAL_KEY")
-            or get_secret("PORTKEY_VIRTUAL_KEY", env="PORTKEY_VIRTUAL_KEY", required=False)
-        )
-        if not (portkey_api_key and virtual_key):
-            raise RuntimeError(
-                "USE_PORTKEY enabled but missing PORTKEY_API_KEY and/or PORTKEY_VK_OPENROUTER (or PORTKEY_VIRTUAL_KEY). "
-                "Disable Portkey by unsetting USE_PORTKEY, or set both values in ~/.config/payready/env.llm or config/ports.env."
-            )
-
-    portkey_cfg = PortkeyConfig(
-        api_key=portkey_api_key,
-        virtual_key=virtual_key,
-        base_url=env_settings.portkey_base_url,
-    )
-
     openrouter_key = env_settings.openrouter_api_key or get_secret(
         "OPENROUTER_API_KEY", env="OPENROUTER_API_KEY", required=False
     )
 
+    aimlapi_key = env_settings.aimlapi_api_key or get_secret(
+        "AIMLAPI_API_KEY", env="AIMLAPI_API_KEY", required=False
+    )
+
+    aimlapi_base_url = env_settings.aimlapi_base_url
+
     return Settings(
-        portkey=portkey_cfg,
         openrouter_api_key=openrouter_key,
+        aimlapi_api_key=aimlapi_key,
+        aimlapi_base_url=aimlapi_base_url,
         agents=agents_config,
         research=research_settings,
     )

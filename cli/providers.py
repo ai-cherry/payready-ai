@@ -4,9 +4,19 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
 
 from .secrets import get
+
+try:
+    from core.llm_client.openrouter_client import OpenRouterClient
+except ImportError:
+    OpenRouterClient = None
+
+try:
+    from core.llm_client.aimlapi_client import AIMLAPIClient
+except ImportError:
+    AIMLAPIClient = None
 
 
 class StubResponse:
@@ -133,6 +143,33 @@ def client_deepseek():
     return _openai_client_from_base("OPENAI_BASE_URL")
 
 
+@lru_cache(maxsize=None)
+def client_aimlapi():
+    """Get AIMLAPI client for backup routing."""
+    # In offline mode, return stub client
+    if os.getenv("PAYREADY_OFFLINE_MODE") == "1":
+        return StubClient("AIMLAPI")
+
+    if AIMLAPIClient:
+        return AIMLAPIClient()
+
+    # Fallback to OpenAI-compatible client
+    os.environ.setdefault("OPENAI_BASE_URL", "https://api.aimlapi.com/v1")
+    return _openai_client_from_base("OPENAI_BASE_URL")
+
+
+def get_primary_client():
+    """Get the primary LLM client (OpenRouter or fallback)."""
+    # Try OpenRouter first
+    if os.getenv("OPENROUTER_API_KEY"):
+        return client_openrouter()
+    # Fallback to AIMLAPI
+    if os.getenv("AIMLAPI_KEY"):
+        return client_aimlapi()
+    # Last resort: stub
+    return StubClient("Offline")
+
+
 __all__ = [
     "client_anthropic",
     "client_deepseek",
@@ -140,4 +177,6 @@ __all__ = [
     "client_openrouter",
     "client_together",
     "client_xai",
+    "client_aimlapi",
+    "get_primary_client",
 ]

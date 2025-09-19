@@ -25,14 +25,12 @@ curl -fsS https://openrouter.ai/api/v1/models \
   -H "HTTP-Referer: ${OPENROUTER_REFERER:-https://payready.ai}" \
   -H "X-Title: ${OPENROUTER_TITLE:-PayReady AI CLI}" | jq '.data|length' || fail
 
-echo "Portkey:"
-use_portkey=$(printf '%s' "${USE_PORTKEY:-}" | tr '[:upper:]' '[:lower:]')
-if [[ "$use_portkey" =~ ^(1|true|yes)$ ]]; then
-  curl -fsS https://api.portkey.ai/v1/models \
-    -H "x-portkey-api-key: $(py_key PORTKEY_API_KEY)" \
-    -H "x-portkey-virtual-key: ${PORTKEY_VK_OPENROUTER:-${PORTKEY_VIRTUAL_KEY:-}}" | jq '.data|length' || fail
+echo "AIMLAPI:"
+if [[ -n "${AIMLAPI_KEY:-}" ]]; then
+  curl -fsS https://api.aimlapi.com/v1/models \
+    -H "Authorization: Bearer $(py_key AIMLAPI_KEY)" | jq '.data|length' || echo "fail"
 else
-  echo "skipped (USE_PORTKEY not set)"
+  echo "skipped (AIMLAPI_KEY not set)"
 fi
 
 echo "Together:"

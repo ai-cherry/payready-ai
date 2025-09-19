@@ -56,7 +56,7 @@ async def run_threat(
     prompt = dedent(
         f"""
         Goal: {goal}
-        Review artifact excerpt: {review_snapshot[:800]}.
+        Review artifact excerpt: {str(review_snapshot)[:800]}.
         Produce threat.json with fields: dfd, risks[], mitigations[], controls[],
         rollback_plan, compliance{{logging, pii, retention}}, confidence.
         Ensure mitigations include SAST/DAST, secrets scanning, license/PII checks.

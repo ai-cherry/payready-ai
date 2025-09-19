@@ -1,0 +1,28 @@
+{
+  "options": [
+    {
+      "name": "Stub Option",
+      "pros": [
+        "Works offline"
+      ],
+      "cons": [
+        "Limited functionality"
+      ],
+      "links": [
+        "http://example.com"
+      ]
+    }
+  ],
+  "decision_matrix": [
+    {
+      "criteria": "offline",
+      "score": 10
+    }
+  ],
+  "chosen": "Stub Option",
+  "citations": [
+    "Stub citation"
+  ],
+  "freshness_window_days": 120,
+  "confidence": 0.8
+}

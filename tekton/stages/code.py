@@ -56,7 +56,7 @@ async def run_code(
     prompt = dedent(
         f"""
         Goal: {goal}
-        Backlog excerpt: {backlog_snapshot[:800]}
+        Backlog excerpt: {str(backlog_snapshot)[:800]}
         Produce a unified diff patch (diff.patch) with accompanying JSON metadata
         summarising commands_run[], tests_executed[], risk_notes[], confidence.
         In consensus-free mode, runtime signals (tests passing) outweigh rhetoric.

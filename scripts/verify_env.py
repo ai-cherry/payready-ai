@@ -50,7 +50,7 @@ def check_api_keys():
 
         keys = {
             "OpenRouter": settings.openrouter_api_key,
-            "Portkey": settings.portkey_api_key,
+            "AIMLAPI": settings.aimlapi_api_key,
             "Anthropic": settings.anthropic_api_key,
             "OpenAI": settings.openai_api_key,
         }

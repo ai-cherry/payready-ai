@@ -95,7 +95,7 @@ class AgentFactory:
             'sk-',      # OpenAI
             'sk-ant-',  # Anthropic
             'sk-or-',   # OpenRouter
-            'pk-',      # Portkey
+            'aim-',     # AIMLAPI
             'vk-',      # Virtual key
             'gsk_',     # Groq
             'stub',     # Stub keys
@@ -183,7 +183,7 @@ class AgentFactory:
                 raise ValueError(
                     f"No valid API key for agent '{name}'. "
                     f"Configure one of: OPENROUTER_API_KEY, OPENAI_API_KEY, "
-                    f"ANTHROPIC_API_KEY, or PORTKEY_API_KEY"
+                    f"ANTHROPIC_API_KEY, or AIMLAPI_KEY"
                 )
             elif not self._validate_api_key(api_key):
                 raise ValueError(f"Invalid API key format for agent '{name}': {api_key[:8]}...")

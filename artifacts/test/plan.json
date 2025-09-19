@@ -1,0 +1,18 @@
+{
+  "goals": [
+    "Complete task in offline mode"
+  ],
+  "milestones": [
+    "Stub milestone 1"
+  ],
+  "acceptance_criteria": [
+    "System works offline"
+  ],
+  "risks": [
+    "None in stub mode"
+  ],
+  "slos": [],
+  "dri": "stub-owner",
+  "timeline": "immediate",
+  "confidence": 0.8
+}

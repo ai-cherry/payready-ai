@@ -69,7 +69,7 @@ fi
 # 7. Check for API keys
 log "Checking API keys..."
 HAS_KEY=false
-for key_name in OPENROUTER_API_KEY PORTKEY_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY; do
+for key_name in OPENROUTER_API_KEY AIMLAPI_KEY ANTHROPIC_API_KEY OPENAI_API_KEY; do
     if [[ -n "${!key_name:-}" ]] || grep -q "$key_name" "$CONFIG_DIR"/env.* 2>/dev/null; then
         log "✅ Found $key_name"
         HAS_KEY=true

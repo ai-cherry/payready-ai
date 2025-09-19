@@ -56,7 +56,7 @@ async def run_release(
     prompt = dedent(
         f"""
         Goal: {goal}
-        Test report excerpt: {test_snapshot[:800]}.
+        Test report excerpt: {str(test_snapshot)[:800]}.
         Produce release_report.json capturing environment, version, canary_metrics,
         health[], rollback_cmds[], links[], confidence. Include comms checklist.
         Reflexion hints:\n{hint_block}

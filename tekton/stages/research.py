@@ -57,7 +57,7 @@ async def run_research(
         f"""
         Goal: {goal}
         Provide research.json with options[], decision_matrix[], chosen, citations[],
-        freshness_window_days, confidence. Prior plan context: {plan_snapshot[:800]}.
+        freshness_window_days, confidence. Prior plan context: {str(plan_snapshot)[:800]}.
         Ensure citations include URL + access date. Highlight licensing or compliance
         caveats in decision_matrix.
         Reflexion hints:\n{hint_block}

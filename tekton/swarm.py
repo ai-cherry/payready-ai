@@ -88,7 +88,13 @@ async def run(
             filename = ARTIFACT_FILENAMES.get(name, f"{name}.json")
             destination = output_dir / filename
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(artifact.json(indent=2))
+            # Pydantic v2 compatibility
+            if hasattr(artifact, 'model_dump_json'):
+                # Pydantic v2
+                destination.write_text(artifact.model_dump_json(indent=2))
+            else:
+                # Pydantic v1 fallback
+                destination.write_text(artifact.json(indent=2))
             result["artifact_path"] = str(destination)
 
         results[name] = result
